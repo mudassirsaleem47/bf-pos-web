@@ -16,8 +16,18 @@ import {
   CircularProgress,
   Alert,
   IconButton,
-  Stack
+  Stack,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  TextField,
+  Tabs,
+  Tab
 } from '@mui/material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import {
   AttachMoney as MoneyIcon,
   ShoppingCart as CartIcon,
@@ -54,6 +64,242 @@ const DashboardOverview = () => {
   const [loans, setLoans] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [currency, setCurrency] = useState('Rs.');
+
+  // Date Filter States
+  const [dateFilter, setDateFilter] = useState('365days'); // Default to 365 days
+  const [customStartDate, setCustomStartDate] = useState(dayjs().subtract(30, 'day'));
+  const [customEndDate, setCustomEndDate] = useState(dayjs());
+
+  // Get start and end date based on dateFilter selection
+  const getFilterDateRange = () => {
+    const now = dayjs();
+    let start = null;
+    let end = now.endOf('day');
+
+    switch (dateFilter) {
+      case 'today':
+        start = now.startOf('day');
+        end = now.endOf('day');
+        break;
+      case 'yesterday':
+        start = now.subtract(1, 'day').startOf('day');
+        end = now.subtract(1, 'day').endOf('day');
+        break;
+      case 'thisweek':
+        start = now.startOf('week');
+        end = now.endOf('week');
+        break;
+      case 'thismonth':
+        start = now.startOf('month');
+        end = now.endOf('month');
+        break;
+      case '30days':
+        start = now.subtract(30, 'day').startOf('day');
+        break;
+      case '365days':
+        start = now.subtract(365, 'day').startOf('day');
+        break;
+      case 'custom':
+        start = customStartDate ? dayjs(customStartDate).startOf('day') : null;
+        end = customEndDate ? dayjs(customEndDate).endOf('day') : null;
+        break;
+      case 'all':
+      default:
+        start = null;
+        end = null;
+        break;
+    }
+    return { start, end };
+  };
+
+  const filterByDate = (dateVal) => {
+    if (!dateVal) return false;
+    const { start, end } = getFilterDateRange();
+    const d = dayjs(dateVal);
+    if (start && d.isBefore(start)) return false;
+    if (end && d.isAfter(end)) return false;
+    return true;
+  };
+
+  // Filtered Datasets
+  const filteredSales = sales.filter(s => filterByDate(s.createdAt));
+  const filteredSupplierInvoices = supplierInvoices.filter(s => filterByDate(s.date || s.createdAt));
+  const filteredLoans = loans.filter(l => filterByDate(l.createdAt));
+  const filteredCustomers = customers.filter(c => filterByDate(c.createdAt));
+
+  // Chart Tab State
+  const [chartTab, setChartTab] = useState('1week'); // Default to 1 week
+
+  // Get aggregated sales data for the chart based on selected tab
+  const getChartData = () => {
+    const now = dayjs();
+    const chartData = [];
+
+    if (chartTab === 'today') {
+      // Group by hours (last 6 2-hour intervals ending now)
+      for (let i = 5; i >= 0; i--) {
+        const targetHour = now.subtract(i * 2, 'hour');
+        const label = targetHour.format('hh A');
+        
+        const windowStart = targetHour.subtract(2, 'hour').add(1, 'second');
+        const windowEnd = targetHour;
+        
+        const salesInWindow = sales.filter(s => {
+          const saleTime = dayjs(s.createdAt);
+          return saleTime.isAfter(windowStart.subtract(1, 'second')) && saleTime.isBefore(windowEnd.add(1, 'second'));
+        });
+        
+        const total = salesInWindow.reduce((sum, s) => sum + s.totalAmount, 0);
+        chartData.push({ label, amount: total });
+      }
+    } else if (chartTab === '1week') {
+      // Last 7 days
+      for (let i = 6; i >= 0; i--) {
+        const date = now.subtract(i, 'day');
+        const label = date.format('ddd'); // Mon, Tue, etc.
+        const salesOnDate = sales.filter(s => dayjs(s.createdAt).isSame(date, 'day'));
+        const total = salesOnDate.reduce((sum, s) => sum + s.totalAmount, 0);
+        chartData.push({ label, amount: total });
+      }
+    } else if (chartTab === '1month') {
+      // Last 30 days grouped into 6 intervals of 5 days each
+      for (let i = 5; i >= 0; i--) {
+        const startDate = now.subtract((i * 5) + 4, 'day').startOf('day');
+        const endDate = now.subtract(i * 5, 'day').endOf('day');
+        const label = `${startDate.format('D')}-${endDate.format('D')} ${endDate.format('MMM')}`;
+        
+        const salesInRange = sales.filter(s => {
+          const d = dayjs(s.createdAt);
+          return d.isAfter(startDate.subtract(1, 'second')) && d.isBefore(endDate.add(1, 'second'));
+        });
+        const total = salesInRange.reduce((sum, s) => sum + s.totalAmount, 0);
+        chartData.push({ label, amount: total });
+      }
+    }
+    return chartData;
+  };
+
+  const renderSalesChart = () => {
+    const data = getChartData();
+    const maxAmount = Math.max(...data.map(d => d.amount), 100);
+    
+    // SVG Dimensions
+    const svgWidth = 450;
+    const svgHeight = 220;
+    const paddingLeft = 55;
+    const paddingRight = 15;
+    const paddingTop = 20;
+    const paddingBottom = 40;
+    
+    const chartWidth = svgWidth - paddingLeft - paddingRight;
+    const chartHeight = svgHeight - paddingTop - paddingBottom;
+    
+    const barWidth = (chartWidth / data.length) * 0.55;
+    const barSpacing = chartWidth / data.length;
+
+    // Y Axis ticks (4 ticks: 0%, 33%, 66%, 100%)
+    const yTicks = [0, 0.33, 0.66, 1];
+
+    return (
+      <Box sx={{ width: '100%', height: svgHeight, display: 'flex', justifyContent: 'center' }}>
+        <svg width="100%" height="100%" viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#2563eb" />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.3" />
+            </linearGradient>
+          </defs>
+
+          {/* Grid lines & Y Labels */}
+          {yTicks.map((tick, idx) => {
+            const y = paddingTop + chartHeight * (1 - tick);
+            const val = (maxAmount * tick).toFixed(0);
+            return (
+              <g key={idx}>
+                <line
+                  x1={paddingLeft}
+                  y1={y}
+                  x2={svgWidth - paddingRight}
+                  y2={y}
+                  stroke="#e2e8f0"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                />
+                <text
+                  x={paddingLeft - 10}
+                  y={y + 4}
+                  fill="#94a3b8"
+                  fontSize="10"
+                  textAnchor="end"
+                  fontWeight="600"
+                >
+                  {currency}{val}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Bars */}
+          {data.map((item, idx) => {
+            const barHeight = (item.amount / maxAmount) * chartHeight;
+            const x = paddingLeft + (idx * barSpacing) + (barSpacing - barWidth) / 2;
+            const y = paddingTop + chartHeight - barHeight;
+
+            return (
+              <g key={idx}>
+                {/* Bar */}
+                <rect
+                  x={x}
+                  y={y}
+                  width={barWidth}
+                  height={barHeight}
+                  rx="3"
+                  fill="url(#barGradient)"
+                  style={{ transition: 'all 0.3s ease' }}
+                />
+                
+                {/* Hover overlay text / value on top of bar */}
+                {item.amount > 0 && (
+                  <text
+                    x={x + barWidth / 2}
+                    y={y - 6}
+                    fill="#1e293b"
+                    fontSize="9"
+                    fontWeight="700"
+                    textAnchor="middle"
+                  >
+                    {item.amount.toFixed(0)}
+                  </text>
+                )}
+
+                {/* X Axis Label */}
+                <text
+                  x={x + barWidth / 2}
+                  y={paddingTop + chartHeight + 20}
+                  fill="#64748b"
+                  fontSize="10"
+                  fontWeight="600"
+                  textAnchor="middle"
+                >
+                  {item.label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* X Axis Line */}
+          <line
+            x1={paddingLeft}
+            y1={paddingTop + chartHeight}
+            x2={svgWidth - paddingRight}
+            y2={paddingTop + chartHeight}
+            stroke="#cbd5e1"
+            strokeWidth="1.5"
+          />
+        </svg>
+      </Box>
+    );
+  };
 
   const getToken = () => {
     const token = localStorage.getItem('token');
@@ -125,22 +371,22 @@ const DashboardOverview = () => {
 
   // ── Metrics Calculations ───────────────────────────────────────
   // Loans summary
-  const loansPayable = loans.filter(l => l.type === 'Payable' && l.status !== 'Paid').reduce((sum, l) => sum + l.amount, 0);
-  const loansReceivable = loans.filter(l => l.type === 'Receivable' && l.status !== 'Paid').reduce((sum, l) => sum + l.amount, 0);
+  const loansPayable = filteredLoans.filter(l => l.type === 'Payable' && l.status !== 'Paid').reduce((sum, l) => sum + l.amount, 0);
+  const loansReceivable = filteredLoans.filter(l => l.type === 'Receivable' && l.status !== 'Paid').reduce((sum, l) => sum + l.amount, 0);
 
   // Big Cards Calculations
   const totalReceivable = loansReceivable - loansPayable;
-  const totalReceivedAmount = sales.reduce((sum, s) => sum + s.paidAmount, 0);
-  const totalDiscountGiven = sales.reduce((sum, s) => sum + s.discount, 0);
+  const totalReceivedAmount = filteredSales.reduce((sum, s) => sum + s.paidAmount, 0);
+  const totalDiscountGiven = filteredSales.reduce((sum, s) => sum + s.discount, 0);
   const totalRevenue = totalReceivedAmount + totalReceivable;
 
   // Small Cards Calculations
-  const totalInvoiceCount = sales.length;
-  const totalSalesRevenue = sales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalInvoiceCount = filteredSales.length;
+  const totalSalesRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
 
   // Count of sold product types
   const soldProductTypesSet = new Set();
-  sales.forEach(sale => {
+  filteredSales.forEach(sale => {
     if (sale.items && Array.isArray(sale.items)) {
       sale.items.forEach(item => {
         if (item.productId) soldProductTypesSet.add(item.productId);
@@ -150,36 +396,17 @@ const DashboardOverview = () => {
   });
   const soldProductTypesCount = soldProductTypesSet.size;
 
-  const totalSoldQtyCount = sales.reduce((sum, s) => {
+  const totalSoldQtyCount = filteredSales.reduce((sum, s) => {
     const qty = s.items ? s.items.reduce((itemSum, item) => itemSum + (item.quantity || 0), 0) : 0;
     return sum + qty;
   }, 0);
 
-  const totalCustomerCount = customers.length;
+  const totalCustomerCount = filteredCustomers.length;
   const totalSupplierCount = suppliers.length;
   const totalItemsInStockCount = products.filter(p => p.stock > 0).length;
   const totalCategoriesCount = categories.length;
 
-  // Chart percentage
-  const totalReceivablePercent = totalRevenue !== 0
-    ? (Math.abs(totalReceivable) / Math.abs(totalRevenue)) * 100
-    : 0;
 
-  // Donut chart segments calculations
-  const totalSum = totalReceivedAmount + totalDiscountGiven + Math.abs(totalReceivable);
-  const receivedPct = totalSum > 0 ? (totalReceivedAmount / totalSum) * 100 : 60;
-  const discountPct = totalSum > 0 ? (totalDiscountGiven / totalSum) * 100 : 25;
-  const receivablePct = totalSum > 0 ? (Math.abs(totalReceivable) / totalSum) * 100 : 15;
-
-  // SVG parameters for donut chart
-  const radius = 60;
-  const strokeWidth = 14;
-  const circ = 2 * Math.PI * radius;
-
-  // Segment stroke offsets
-  const receivedDashoffset = circ - (receivedPct / 100) * circ;
-  const discountDashoffset = circ - (discountPct / 100) * circ;
-  const receivableDashoffset = circ - (receivablePct / 100) * circ;
 
   const quickActions = [
     { label: 'Cash Receivable', path: '/loan', icon: <MoneyIcon sx={{ fontSize: 24 }} /> },
@@ -240,33 +467,101 @@ const DashboardOverview = () => {
         ))}
       </Grid>
 
-      {/* 2. Last 365 Days Reports Banner */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1, mb: 2 }}>
-        <Typography variant="body2" sx={{ fontWeight: 700, color: '#475569', fontSize: '0.85rem', tracking: '0.5px' }}>
-          Last 365 Days Reports
-        </Typography>
-        <IconButton
-          onClick={handleRefreshClick}
-          size="small"
-          sx={{
-            color: '#475569',
-            bgcolor: '#ffffff',
-            border: '1px solid #e5e7eb',
-            '&:hover': { bgcolor: '#f8fafc' }
-          }}
-        >
-          <RefreshIcon
-            sx={{
-              fontSize: 16,
-              animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
-              '@keyframes spin': {
-                '0%': { transform: 'rotate(0deg)' },
-                '100%': { transform: 'rotate(360deg)' }
-              }
-            }}
-          />
-        </IconButton>
-      </Box>
+      {/* 2. Date Filter Toolbar */}
+      <Card
+        sx={{
+          p: 2,
+          mb: 3,
+          bgcolor: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '6px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        }}
+      >
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <Grid container spacing={2} alignItems="center" justifyContent="space-between">
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Typography variant="body2" sx={{ fontWeight: 700, color: '#475569', fontSize: '0.85rem', tracking: '0.5px', textTransform: 'uppercase' }}>
+                {dateFilter === 'today' && "Today's Report Overview"}
+                {dateFilter === 'yesterday' && "Yesterday's Report Overview"}
+                {dateFilter === 'thisweek' && "This Week's Report Overview"}
+                {dateFilter === 'thismonth' && "This Month's Report Overview"}
+                {dateFilter === '30days' && "Last 30 Days Report Overview"}
+                {dateFilter === '365days' && "Last 365 Days Report Overview"}
+                {dateFilter === 'all' && "All Time Report Overview"}
+                {dateFilter === 'custom' && `Report: ${customStartDate ? customStartDate.format('DD/MM/YYYY') : '...'} to ${customEndDate ? customEndDate.format('DD/MM/YYYY') : '...'}`}
+              </Typography>
+            </Grid>
+            <Grid size={{ xs: 12, md: 8 }}>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2}
+                justifyContent="flex-end"
+                alignItems="center"
+              >
+                <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
+                  <InputLabel id="date-filter-label">Period</InputLabel>
+                  <Select
+                    labelId="date-filter-label"
+                    value={dateFilter}
+                    label="Period"
+                    onChange={(e) => setDateFilter(e.target.value)}
+                  >
+                    <MenuItem value="today">Today</MenuItem>
+                    <MenuItem value="yesterday">Yesterday</MenuItem>
+                    <MenuItem value="thisweek">This Week</MenuItem>
+                    <MenuItem value="thismonth">This Month</MenuItem>
+                    <MenuItem value="30days">Last 30 Days</MenuItem>
+                    <MenuItem value="365days">Last 365 Days</MenuItem>
+                    <MenuItem value="all">All Time</MenuItem>
+                    <MenuItem value="custom">Custom Range</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {dateFilter === 'custom' && (
+                  <>
+                    <DatePicker
+                      label="Start Date"
+                      value={customStartDate}
+                      onChange={(newValue) => setCustomStartDate(newValue)}
+                      slotProps={{ textField: { size: 'small', sx: { width: { xs: '100%', sm: 150 } } } }}
+                    />
+                    <DatePicker
+                      label="End Date"
+                      value={customEndDate}
+                      onChange={(newValue) => setCustomEndDate(newValue)}
+                      slotProps={{ textField: { size: 'small', sx: { width: { xs: '100%', sm: 150 } } } }}
+                    />
+                  </>
+                )}
+
+                <IconButton
+                  onClick={handleRefreshClick}
+                  size="small"
+                  sx={{
+                    color: '#475569',
+                    bgcolor: '#ffffff',
+                    border: '1px solid #e5e7eb',
+                    '&:hover': { bgcolor: '#f8fafc' },
+                    alignSelf: { xs: 'flex-end', sm: 'auto' }
+                  }}
+                >
+                  <RefreshIcon
+                    sx={{
+                      fontSize: 16,
+                      animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
+                      '@keyframes spin': {
+                        '0%': { transform: 'rotate(0deg)' },
+                        '100%': { transform: 'rotate(360deg)' }
+                      }
+                    }}
+                  />
+                </IconButton>
+              </Stack>
+            </Grid>
+          </Grid>
+        </LocalizationProvider>
+      </Card>
 
       {/* 3. Four Big Colored Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -464,137 +759,58 @@ const DashboardOverview = () => {
         ))}
       </Grid>
 
-      {/* 5. Bottom Section: 365 Days Sales Chart & Recent Invoices */}
+      {/* 5. Bottom Section: Sales Chart & Recent Invoices */}
       <Grid container spacing={3}>
-        {/* Left Column: Donut Chart */}
-        <Grid size={{ xs: 12, lg: 4 }}>
+        {/* Left Column: Sales Chart with Tabs */}
+        <Grid size={{ xs: 12, lg: 5 }}>
           <Card
             sx={{
               bgcolor: '#ffffff',
               borderRadius: '6px',
               border: '1px solid #e5e7eb',
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-              p: 3,
+              p: 2.5,
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
               height: 380
             }}
           >
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155', mb: 4, alignSelf: 'flex-start', fontSize: '0.85rem' }}>
-              365 Days Sales chart
-            </Typography>
-
-            <Box sx={{ position: 'relative', width: 220, height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="220" height="220" viewBox="0 0 220 220" style={{ transform: 'rotate(-90deg)' }}>
-                {/* Gray Background circle */}
-                <circle
-                  cx="110"
-                  cy="110"
-                  r={radius}
-                  fill="transparent"
-                  stroke="#f1f5f9"
-                  strokeWidth={strokeWidth}
-                />
-
-                {/* Received (Green) segment */}
-                <circle
-                  cx="110"
-                  cy="110"
-                  r={radius}
-                  fill="transparent"
-                  stroke="#4caf50"
-                  strokeWidth={strokeWidth}
-                  strokeDasharray={circ}
-                  strokeDashoffset={receivedDashoffset}
-                  strokeLinecap="round"
-                  style={{ transition: 'stroke-dashoffset 0.8s ease-in-out' }}
-                />
-
-                {/* Discount Given (Orange) segment */}
-                <circle
-                  cx="110"
-                  cy="110"
-                  r={radius}
-                  fill="transparent"
-                  stroke="#ffa726"
-                  strokeWidth={strokeWidth - 1}
-                  strokeDasharray={circ}
-                  strokeDashoffset={discountDashoffset}
-                  strokeLinecap="round"
-                  style={{
-                    transition: 'stroke-dashoffset 0.8s ease-in-out',
-                    transform: `rotate(${receivedPct * 3.6}deg)`,
-                    transformOrigin: '110px 110px'
-                  }}
-                />
-
-                {/* Receivable (Red) segment */}
-                <circle
-                  cx="110"
-                  cy="110"
-                  r={radius}
-                  fill="transparent"
-                  stroke="#ef5350"
-                  strokeWidth={strokeWidth + 2}
-                  strokeDasharray={circ}
-                  strokeDashoffset={receivableDashoffset}
-                  strokeLinecap="round"
-                  style={{
-                    transition: 'stroke-dashoffset 0.8s ease-in-out',
-                    transform: `rotate(${(receivedPct + discountPct) * 3.6}deg)`,
-                    transformOrigin: '110px 110px'
-                  }}
-                />
-              </svg>
-
-              {/* Text inside donut */}
-              <Box
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155', fontSize: '0.85rem' }}>
+                Sales Performance
+              </Typography>
+              
+              <Tabs
+                value={chartTab}
+                onChange={(e, newValue) => setChartTab(newValue)}
+                textColor="primary"
+                indicatorColor="primary"
                 sx={{
-                  position: 'absolute',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  width: 140
+                  minHeight: 28,
+                  '& .MuiTab-root': {
+                    minHeight: 28,
+                    py: 0.5,
+                    px: 1.5,
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    textTransform: 'none'
+                  }
                 }}
               >
-                <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', mb: 0.5, textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.5px' }}>
-                  Receivable
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 800, color: '#0f172a', fontSize: '1.65rem' }}>
-                  {totalReceivablePercent.toFixed(2)}%
-                </Typography>
-              </Box>
+                <Tab label="Today" value="today" />
+                <Tab label="1 Week" value="1week" />
+                <Tab label="1 Month" value="1month" />
+              </Tabs>
             </Box>
 
-            {/* Legend */}
-            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap', width: '100%' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4caf50' }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748b', fontSize: '0.72rem' }}>
-                  Received ({receivedPct.toFixed(0)}%)
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ffa726' }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748b', fontSize: '0.72rem' }}>
-                  Discount ({discountPct.toFixed(0)}%)
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ef5350' }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748b', fontSize: '0.72rem' }}>
-                  Receivable ({receivablePct.toFixed(0)}%)
-                </Typography>
-              </Box>
+            <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', mt: 1 }}>
+              {renderSalesChart()}
             </Box>
           </Card>
         </Grid>
 
         {/* Right Column: Recent Invoices Table */}
-        <Grid size={{ xs: 12, lg: 8 }}>
+        <Grid size={{ xs: 12, lg: 7 }}>
           <Card
             sx={{
               bgcolor: '#ffffff',
@@ -627,14 +843,14 @@ const DashboardOverview = () => {
             <TableContainer sx={{ flexGrow: 1, overflowY: 'auto' }}>
               <Table size="small" sx={{ '& td, & th': { borderBottom: '1px solid #f1f5f9', py: 1.2 } }}>
                 <TableBody>
-                  {supplierInvoices.length === 0 ? (
+                  {filteredSupplierInvoices.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} align="center" sx={{ py: 6, color: '#94a3b8' }}>
                         No supplier invoices recorded.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    supplierInvoices.slice(0, 9).map((inv, idx) => (
+                    filteredSupplierInvoices.slice(0, 9).map((inv, idx) => (
                       <TableRow key={inv.id} hover>
                         <TableCell sx={{ color: '#64748b', fontWeight: 600, width: 40 }}>
                           {idx + 1}
