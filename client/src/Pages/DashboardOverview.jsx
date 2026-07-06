@@ -63,6 +63,7 @@ const DashboardOverview = () => {
   const [supplierInvoices, setSupplierInvoices] = useState([]);
   const [loans, setLoans] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [currency, setCurrency] = useState('Rs.');
 
   // Date Filter States
@@ -126,6 +127,7 @@ const DashboardOverview = () => {
   const filteredSupplierInvoices = supplierInvoices.filter(s => filterByDate(s.date || s.createdAt));
   const filteredLoans = loans.filter(l => filterByDate(l.createdAt));
   const filteredCustomers = customers.filter(c => filterByDate(c.createdAt));
+  const filteredExpenses = expenses.filter(e => filterByDate(e.date || e.createdAt));
 
   // Chart Tab State
   const [chartTab, setChartTab] = useState('1week'); // Default to 1 week
@@ -140,15 +142,15 @@ const DashboardOverview = () => {
       for (let i = 5; i >= 0; i--) {
         const targetHour = now.subtract(i * 2, 'hour');
         const label = targetHour.format('hh A');
-        
+
         const windowStart = targetHour.subtract(2, 'hour').add(1, 'second');
         const windowEnd = targetHour;
-        
+
         const salesInWindow = sales.filter(s => {
           const saleTime = dayjs(s.createdAt);
           return saleTime.isAfter(windowStart.subtract(1, 'second')) && saleTime.isBefore(windowEnd.add(1, 'second'));
         });
-        
+
         const total = salesInWindow.reduce((sum, s) => sum + s.totalAmount, 0);
         chartData.push({ label, amount: total });
       }
@@ -167,7 +169,7 @@ const DashboardOverview = () => {
         const startDate = now.subtract((i * 5) + 4, 'day').startOf('day');
         const endDate = now.subtract(i * 5, 'day').endOf('day');
         const label = `${startDate.format('D')}-${endDate.format('D')} ${endDate.format('MMM')}`;
-        
+
         const salesInRange = sales.filter(s => {
           const d = dayjs(s.createdAt);
           return d.isAfter(startDate.subtract(1, 'second')) && d.isBefore(endDate.add(1, 'second'));
@@ -182,18 +184,18 @@ const DashboardOverview = () => {
   const renderSalesChart = () => {
     const data = getChartData();
     const maxAmount = Math.max(...data.map(d => d.amount), 100);
-    
+
     // SVG Dimensions
-    const svgWidth = 450;
+    const svgWidth = 650;
     const svgHeight = 220;
     const paddingLeft = 55;
     const paddingRight = 15;
     const paddingTop = 20;
     const paddingBottom = 40;
-    
+
     const chartWidth = svgWidth - paddingLeft - paddingRight;
     const chartHeight = svgHeight - paddingTop - paddingBottom;
-    
+
     const barWidth = (chartWidth / data.length) * 0.55;
     const barSpacing = chartWidth / data.length;
 
@@ -257,7 +259,7 @@ const DashboardOverview = () => {
                   fill="url(#barGradient)"
                   style={{ transition: 'all 0.3s ease' }}
                 />
-                
+
                 {/* Hover overlay text / value on top of bar */}
                 {item.amount > 0 && (
                   <text
@@ -340,6 +342,7 @@ const DashboardOverview = () => {
       setSupplierInvoices(Array.isArray(data.supplierInvoices) ? data.supplierInvoices : []);
       setLoans(Array.isArray(data.loans) ? data.loans : []);
       setCustomers(Array.isArray(data.customers) ? data.customers : []);
+      setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
 
       if (data.settings && data.settings.currency) {
         setCurrency(data.settings.currency);
@@ -369,20 +372,26 @@ const DashboardOverview = () => {
     );
   }
 
-  // ── Metrics Calculations ───────────────────────────────────────
-  // Loans summary
-  const loansPayable = filteredLoans.filter(l => l.type === 'Payable' && l.status !== 'Paid').reduce((sum, l) => sum + l.amount, 0);
-  const loansReceivable = filteredLoans.filter(l => l.type === 'Receivable' && l.status !== 'Paid').reduce((sum, l) => sum + l.amount, 0);
-
-  // Big Cards Calculations
-  const totalReceivable = loansReceivable - loansPayable;
+  // Sales & Collections
+  const totalSalesRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
   const totalReceivedAmount = filteredSales.reduce((sum, s) => sum + s.paidAmount, 0);
   const totalDiscountGiven = filteredSales.reduce((sum, s) => sum + s.discount, 0);
-  const totalRevenue = totalReceivedAmount + totalReceivable;
+
+  // Integrated Receivables (Customer Credit + Manual Receivables)
+  const customerReceivables = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
+  const manualReceivables = filteredLoans.filter(l => l.type === 'Receivable' && l.status !== 'Paid').reduce((sum, l) => sum + l.amount, 0);
+  const totalReceivables = customerReceivables + manualReceivables;
+
+  // Integrated Payables (Supplier Invoice Dues + Manual Payables)
+  const supplierPayables = supplierInvoices.reduce((sum, inv) => sum + (inv.due || 0), 0);
+  const manualPayables = filteredLoans.filter(l => l.type === 'Payable' && l.status !== 'Paid').reduce((sum, l) => sum + l.amount, 0);
+  const totalPayables = supplierPayables + manualPayables;
+
+  // Expenses Calculations
+  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   // Small Cards Calculations
   const totalInvoiceCount = filteredSales.length;
-  const totalSalesRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
 
   // Count of sold product types
   const soldProductTypesSet = new Set();
@@ -492,12 +501,13 @@ const DashboardOverview = () => {
                 {dateFilter === 'custom' && `Report: ${customStartDate ? customStartDate.format('DD/MM/YYYY') : '...'} to ${customEndDate ? customEndDate.format('DD/MM/YYYY') : '...'}`}
               </Typography>
             </Grid>
-            <Grid size={{ xs: 12, md: 8 }}>
+            <Grid size={{ xs: 12, md: 8 }} sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}
                 spacing={2}
                 justifyContent="flex-end"
                 alignItems="center"
+                sx={{ width: '100%' }}
               >
                 <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
                   <InputLabel id="date-filter-label">Period</InputLabel>
@@ -565,112 +575,7 @@ const DashboardOverview = () => {
 
       {/* 3. Four Big Colored Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        {/* TOTAL RECEIVABLE (Red) */}
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card
-            sx={{
-              background: '#f44336',
-              color: '#ffffff',
-              borderRadius: '6px',
-              border: 'none',
-              position: 'relative',
-              overflow: 'hidden',
-              height: 115,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              pl: 3
-            }}
-          >
-            <Typography variant="h5" sx={{ fontWeight: 800, fontSize: '1.65rem' }}>
-              {currency}{totalReceivable.toFixed(1)}
-            </Typography>
-            <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.8)', mt: 0.5, letterSpacing: '0.5px', fontSize: '0.72rem' }}>
-              TOTAL RECEIVABLE
-            </Typography>
-            <CartIcon
-              sx={{
-                position: 'absolute',
-                bottom: -15,
-                right: -10,
-                fontSize: '6.5rem',
-                color: 'rgba(255, 255, 255, 0.08)'
-              }}
-            />
-          </Card>
-        </Grid>
-
-        {/* TOTAL RECEIVED AMOUNT (Blue) */}
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card
-            sx={{
-              background: '#2196f3',
-              color: '#ffffff',
-              borderRadius: '6px',
-              border: 'none',
-              position: 'relative',
-              overflow: 'hidden',
-              height: 115,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              pl: 3
-            }}
-          >
-            <Typography variant="h5" sx={{ fontWeight: 800, fontSize: '1.65rem' }}>
-              {currency}{totalReceivedAmount.toFixed(1)}
-            </Typography>
-            <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.8)', mt: 0.5, letterSpacing: '0.5px', fontSize: '0.72rem' }}>
-              TOTAL RECEIVED AMOUNT
-            </Typography>
-            <BarChartIcon
-              sx={{
-                position: 'absolute',
-                bottom: -15,
-                right: -10,
-                fontSize: '6.5rem',
-                color: 'rgba(255, 255, 255, 0.08)'
-              }}
-            />
-          </Card>
-        </Grid>
-
-        {/* TOTAL DISCOUNT GIVEN (Orange) */}
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card
-            sx={{
-              background: '#ff9800',
-              color: '#ffffff',
-              borderRadius: '6px',
-              border: 'none',
-              position: 'relative',
-              overflow: 'hidden',
-              height: 115,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              pl: 3
-            }}
-          >
-            <Typography variant="h5" sx={{ fontWeight: 800, fontSize: '1.65rem' }}>
-              {currency}{totalDiscountGiven.toFixed(0)}
-            </Typography>
-            <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.8)', mt: 0.5, letterSpacing: '0.5px', fontSize: '0.72rem' }}>
-              TOTAL DISCOUNT GIVEN
-            </Typography>
-            <BarChartIcon
-              sx={{
-                position: 'absolute',
-                bottom: -15,
-                right: -10,
-                fontSize: '6.5rem',
-                color: 'rgba(255, 255, 255, 0.08)'
-              }}
-            />
-          </Card>
-        </Grid>
-
-        {/* TOTAL REVENUE (Green) */}
+        {/* TOTAL SALES (Green) */}
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card
             sx={{
@@ -688,12 +593,117 @@ const DashboardOverview = () => {
             }}
           >
             <Typography variant="h5" sx={{ fontWeight: 800, fontSize: '1.65rem' }}>
-              {currency}{totalRevenue.toFixed(0)}
+              {currency}{totalSalesRevenue.toFixed(0)}
             </Typography>
             <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.8)', mt: 0.5, letterSpacing: '0.5px', fontSize: '0.72rem' }}>
-              TOTAL REVENUE
+              TOTAL SALES
             </Typography>
             <TrendingIcon
+              sx={{
+                position: 'absolute',
+                bottom: -15,
+                right: -10,
+                fontSize: '6.5rem',
+                color: 'rgba(255, 255, 255, 0.08)'
+              }}
+            />
+          </Card>
+        </Grid>
+
+        {/* CASH RECEIVED (Blue) */}
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Card
+            sx={{
+              background: '#2196f3',
+              color: '#ffffff',
+              borderRadius: '6px',
+              border: 'none',
+              position: 'relative',
+              overflow: 'hidden',
+              height: 115,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              pl: 3
+            }}
+          >
+            <Typography variant="h5" sx={{ fontWeight: 800, fontSize: '1.65rem' }}>
+              {currency}{totalReceivedAmount.toFixed(0)}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.8)', mt: 0.5, letterSpacing: '0.5px', fontSize: '0.72rem' }}>
+              CASH RECEIVED
+            </Typography>
+            <MoneyIcon
+              sx={{
+                position: 'absolute',
+                bottom: -15,
+                right: -10,
+                fontSize: '6.5rem',
+                color: 'rgba(255, 255, 255, 0.08)'
+              }}
+            />
+          </Card>
+        </Grid>
+
+        {/* TOTAL RECEIVABLES (Orange) */}
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Card
+            sx={{
+              background: '#ff9800',
+              color: '#ffffff',
+              borderRadius: '6px',
+              border: 'none',
+              position: 'relative',
+              overflow: 'hidden',
+              height: 115,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              pl: 3
+            }}
+          >
+            <Typography variant="h5" sx={{ fontWeight: 800, fontSize: '1.65rem' }}>
+              {currency}{totalReceivables.toFixed(0)}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.8)', mt: 0.5, letterSpacing: '0.5px', fontSize: '0.72rem' }}>
+              TOTAL RECEIVABLES
+            </Typography>
+            <CartIcon
+              sx={{
+                position: 'absolute',
+                bottom: -15,
+                right: -10,
+                fontSize: '6.5rem',
+                color: 'rgba(255, 255, 255, 0.08)'
+              }}
+            />
+          </Card>
+        </Grid>
+
+        {/* TOTAL PAYABLES (Red) */}
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Card
+            sx={{
+              background: '#f44336',
+              color: '#ffffff',
+              borderRadius: '6px',
+              border: 'none',
+              position: 'relative',
+              overflow: 'hidden',
+              height: 115,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              pl: 3
+            }}
+          >
+            <Typography variant="h5" sx={{ fontWeight: 800, fontSize: '1.65rem' }}>
+              {currency}{totalPayables.toFixed(0)}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.8)', mt: 0.5, letterSpacing: '0.5px', fontSize: '0.72rem' }}>
+              TOTAL PAYABLES
+            </Typography>
+            <BarChartIcon
               sx={{
                 position: 'absolute',
                 bottom: -15,
@@ -710,7 +720,7 @@ const DashboardOverview = () => {
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
           { label: 'TOTAL INVOICE', value: totalInvoiceCount, icon: <InvoiceIcon sx={{ fontSize: 20 }} />, color: '#ef5350', bg: '#fef2f2' },
-          { label: 'SALES', value: `${currency}${totalSalesRevenue.toFixed(0)}`, icon: <BarChartIcon sx={{ fontSize: 20 }} />, color: '#66bb6a', bg: '#ecfdf5' },
+          { label: 'TOTAL EXPENSES', value: `${currency}${totalExpenses.toFixed(0)}`, icon: <MoneyIcon sx={{ fontSize: 20 }} />, color: '#ef5350', bg: '#fef2f2' },
           { label: 'SOLD PRODUCTS TYPES', value: soldProductTypesCount, icon: <CartIcon sx={{ fontSize: 20 }} />, color: '#42a5f5', bg: '#eff6ff' },
           { label: 'TOTAL SOLD PRO. QTY', value: totalSoldQtyCount, icon: <CartIcon sx={{ fontSize: 20 }} />, color: '#ffa726', bg: '#fff7ed' },
           { label: 'TOTAL CUSTOMER', value: totalCustomerCount, icon: <PeopleIcon sx={{ fontSize: 20 }} />, color: '#66bb6a', bg: '#ecfdf5' },
@@ -779,7 +789,7 @@ const DashboardOverview = () => {
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155', fontSize: '0.85rem' }}>
                 Sales Performance
               </Typography>
-              
+
               <Tabs
                 value={chartTab}
                 onChange={(e, newValue) => setChartTab(newValue)}
@@ -825,17 +835,11 @@ const DashboardOverview = () => {
           >
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155', fontSize: '0.85rem' }}>
-                Recent Invoices
+                Recent Supplier Invoices
               </Typography>
               <Stack direction="row" spacing={0.5}>
-                <IconButton size="small" sx={{ color: '#94a3b8' }}>
-                  <RefreshIcon sx={{ fontSize: 14 }} onClick={() => fetchData(true)} />
-                </IconButton>
-                <IconButton size="small" sx={{ color: '#94a3b8' }}>
-                  <SettingsIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-                <IconButton size="small" sx={{ color: '#94a3b8' }}>
-                  <CloseIcon sx={{ fontSize: 14 }} />
+                <IconButton size="small" sx={{ color: '#94a3b8' }} onClick={() => fetchData(true)}>
+                  <RefreshIcon sx={{ fontSize: 14 }} />
                 </IconButton>
               </Stack>
             </Box>

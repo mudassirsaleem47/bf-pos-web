@@ -2,22 +2,12 @@
   "name": "inventory-management-system",
   "version": "1.0.0",
   "description": "Inventory Management System with Node backend and React frontend",
-  "main": "main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "start": "concurrently \"npm run start --prefix server\" \"npm run preview --prefix client\"",
-    "install-all": "npm install --prefix server && npm install --prefix client",
-    "electron:dev": "concurrently \"cross-env IS_ELECTRON=true npm run dev --prefix server\" \"npm run dev --prefix client\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run build --prefix client && electron-builder"
+    "install-all": "npm install --prefix server && npm install --prefix client"
   },
   "dependencies": {
-    "axios": "^1.7.2",
     "concurrently": "^8.2.2"
-  },
-  "devDependencies": {
-    "cross-env": "^10.1.0",
-    "electron": "^43.0.0",
-    "electron-builder": "^26.15.3",
-    "wait-on": "^9.0.10"
   }
 }

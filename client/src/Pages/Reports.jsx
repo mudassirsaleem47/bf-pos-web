@@ -35,7 +35,7 @@ const Reports = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currency, setCurrency] = useState('Rs.');
-  const [storeName, setStoreName] = useState('StockSphere');
+  const [storeName, setStoreName] = useState('BF Makeup');
 
   const getToken = () => {
     const token = localStorage.getItem('token');
@@ -98,7 +98,7 @@ const Reports = () => {
   const totalDiscounts = sales.reduce((sum, s) => sum + s.discount, 0);
   const totalExpenses = expenses.reduce((sum, ex) => sum + ex.amount, 0);
   const netProfit = totalRevenue - totalExpenses;
-  
+
   // Calculate Top Selling Products
   const productSalesCount = {};
   sales.forEach(sale => {
@@ -214,7 +214,7 @@ const Reports = () => {
     doc.setTextColor(148, 163, 184);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text('StockSphere Executive Reports • Internal Management Audit Only', 14, pageH - 10);
+    doc.text('BF Makeup Executive Reports • Internal Management Audit Only', 14, pageH - 10);
     doc.text('Page 1 of 1', pageW - 20, pageH - 10, { align: 'right' });
 
     doc.save(`Executive_Report_${dayjs().format('YYYYMMDD')}.pdf`);
@@ -230,7 +230,7 @@ const Reports = () => {
 
   return (
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
-      
+
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>

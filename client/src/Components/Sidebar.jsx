@@ -23,7 +23,6 @@ import {
   Description as InvoiceIcon,
   AttachMoney as LoanIcon,
   Settings as SettingIcon,
-  RadioButtonUnchecked as DocumentationIcon,
   ChevronRight as ChevronRightIcon,
   Close as CloseIcon,
   ReceiptLong as SuppliersInvoiceIcon,
@@ -33,7 +32,6 @@ import {
   BarChart as ReportsIcon,
   AccountBalanceWallet as ExpensesIcon
 } from '@mui/icons-material';
-import logoImg from '../assets/stocksherelogo.png';
 
 
 const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
@@ -57,8 +55,7 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
     { label: 'Expenses', path: '/expenses', icon: ExpensesIcon },
     { label: 'Staff', path: '/staff', icon: CustomersIcon },
     { label: 'Reports', path: '/reports', icon: ReportsIcon }, // Looks like anchor/stats in mockup
-    { label: 'Setting', path: '/setting', icon: SettingIcon },
-    { label: 'Documentation', path: '/documentation', icon: DocumentationIcon }
+    { label: 'Setting', path: '/setting', icon: SettingIcon }
   ];
 
   const isActive = (path) => {
@@ -100,17 +97,20 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
           mb: 1
         }}
       >
-        <Box
-          component="img"
-          src={logoImg}
-          alt="StockSphere Logo"
-          sx={{
-            width: isCollapsed ? 32 : 160,
-            height: isCollapsed ? 32 : 'auto',
-            objectFit: 'contain',
-            transition: 'all 0.2s ease-in-out'
-          }}
-        />
+        <Link to="/dashboard" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+          <Box
+            component="img"
+            src="/bglogo.avif"
+            alt="Dawn Education Mart Logo"
+            sx={{
+              width: isCollapsed ? 32 : 120,
+              height: isCollapsed ? 32 : 'auto',
+              objectFit: 'contain',
+              transition: 'all 0.2s ease-in-out',
+              cursor: 'pointer'
+            }}
+          />
+        </Link>
       </Box>
 
 
@@ -178,7 +178,7 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
                     }}
                   />
                 )}
-                {!isCollapsed && item.label !== 'Documentation' && (
+                {!isCollapsed && (
                   <ChevronRightIcon
                     sx={{
                       fontSize: 14,

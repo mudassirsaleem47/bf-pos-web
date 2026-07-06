@@ -23,7 +23,6 @@ import Expenses from './Pages/Expenses.jsx';
 import ReceivablesPayables from './Pages/ReceivablesPayables.jsx';
 import Staff from './Pages/Staff.jsx';
 import Reports from './Pages/Reports.jsx';
-import Documentation from './Pages/Documentation.jsx';
 // Define a decent, flat theme with Inter font
 const theme = createTheme({
   typography: {
@@ -123,7 +122,6 @@ const App = () => {
             <Route path="staff" element={<Staff />} />
             <Route path="reports" element={<Reports />} />
             <Route path="setting" element={<Setting />} />
-            <Route path="documentation" element={<Documentation />} />
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>

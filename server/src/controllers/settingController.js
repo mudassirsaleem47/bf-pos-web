@@ -57,4 +57,31 @@ const updateSettings = async (req, res) => {
   }
 };
 
-module.exports = { getSettings, updateSettings };
+// @desc  Clear all store transactional and master data
+// @route DELETE /api/settings/clear-data
+const clearData = async (req, res) => {
+  try {
+    // Delete in dependency order to prevent foreign key violations
+    await prisma.$transaction([
+      prisma.saleItem.deleteMany(),
+      prisma.saleTransaction.deleteMany(),
+      prisma.supplierInvoiceItem.deleteMany(),
+      prisma.supplierInvoice.deleteMany(),
+      prisma.product.deleteMany(),
+      prisma.category.deleteMany(),
+      prisma.supplier.deleteMany(),
+      prisma.customer.deleteMany(),
+      prisma.expense.deleteMany(),
+      prisma.loan.deleteMany(),
+      prisma.staff.deleteMany(),
+      prisma.warehouse.deleteMany(),
+    ]);
+
+    return res.status(200).json({ message: 'All store data cleared successfully' });
+  } catch (error) {
+    console.error('Clear data error:', error);
+    return res.status(500).json({ message: 'Server error clearing data' });
+  }
+};
+
+module.exports = { getSettings, updateSettings, clearData };

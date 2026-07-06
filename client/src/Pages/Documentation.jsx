@@ -71,14 +71,14 @@ const Documentation = () => {
 
   return (
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
-      
+
       {/* Header */}
       <Box>
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
           User Documentation & Guides
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-          Help resources, functional flows, and procedures for using the StockSphere ERP system.
+          Help resources, functional flows, and procedures for using the BF Makeup ERP system.
         </Typography>
       </Box>
 
@@ -95,7 +95,7 @@ const Documentation = () => {
               </Stack>
               <Divider />
               <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                Welcome to StockSphere. This manual provides detailed instructions on operating the point of sale (POS) cash register, inventory catalogs, supplier procurement, expired/dead stock monitoring, operational expense logging, and printing executive summary reports.
+                Welcome to BF Makeup. This manual provides detailed instructions on operating the point of sale (POS) cash register, inventory catalogs, supplier procurement, expired/dead stock monitoring, operational expense logging, and printing executive summary reports.
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 'auto', display: 'block', bgcolor: '#f8fafc', p: 1.5, borderRadius: 1, border: '1px solid #e2e8f0', fontWeight: 600 }}>
                 💡 Tip: Set up your Store Name, Tax Rate, and Local Currency in Settings first to customize receipt templates.

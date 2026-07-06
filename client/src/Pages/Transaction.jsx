@@ -49,10 +49,10 @@ const Transaction = () => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [selected, setSelected] = useState([]);
-  
+
   // Settings / Store details
   const [storeSettings, setStoreSettings] = useState({
-    storeName: 'StockSphere',
+    storeName: 'BF Makeup',
     address: '',
     phone: '',
     email: '',
@@ -181,7 +181,7 @@ const Transaction = () => {
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
     doc.text(storeSettings.storeName.toUpperCase(), 14, 12);
-    
+
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.text(`Receipt: ${sale.receiptNo}`, 14, 20);
@@ -204,7 +204,7 @@ const Transaction = () => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(storeSettings.address || 'N/A', 14, infoY + 6, { maxWidth: pageW / 2 - 10 });
-    
+
     let contactText = '';
     if (storeSettings.phone) contactText += `Phone: ${storeSettings.phone}\n`;
     if (storeSettings.email) contactText += `Email: ${storeSettings.email}\n`;
@@ -361,7 +361,7 @@ const Transaction = () => {
 
   return (
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
-      
+
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>

@@ -83,7 +83,7 @@ const Register = () => {
           <form onSubmit={handleSubmit}>
             <Box sx={{ mb: 2, textAlign: 'center' }}>
               <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-                StockSphere
+                BF Makeup
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Create an account

@@ -18,7 +18,11 @@ import {
   Select,
   MenuItem,
   Checkbox,
-  FormControlLabel
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -41,6 +45,11 @@ const Setting = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState('');
+
+  // Clear Data States
+  const [openClearDialog, setOpenClearDialog] = useState(false);
+  const [confirmClearText, setConfirmClearText] = useState('');
+  const [clearLoading, setClearLoading] = useState(false);
 
   // Printer Configuration States
   const [printMethod, setPrintMethod] = useState(() => localStorage.getItem('printer_method') || 'browser');
@@ -264,6 +273,42 @@ const Setting = () => {
     }
   };
 
+  const handleClearAllData = async () => {
+    if (confirmClearText !== 'CLEAR') return;
+    setClearLoading(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const token = getToken();
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/api/settings/clear-data`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        navigate('/login');
+        return;
+      }
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to clear store data');
+
+      setSuccessMsg('All store data has been cleared successfully!');
+      setOpenClearDialog(false);
+      setConfirmClearText('');
+    } catch (err) {
+      setError(err.message || 'Failed to clear store data.');
+    } finally {
+      setClearLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
       
@@ -282,7 +327,7 @@ const Setting = () => {
       <form onSubmit={handleFormSubmit}>
         <Grid container spacing={3}>
           {/* Company Profile Card */}
-          <Grid item xs={12} md={7}>
+          <Grid size={{ xs: 12, md: 7 }}>
             <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1.5, mb: 3 }}>
               <CardContent sx={{ p: 3 }}>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
@@ -314,7 +359,7 @@ const Setting = () => {
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   />
                   <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         label="Store Phone"
                         variant="standard"
@@ -324,7 +369,7 @@ const Setting = () => {
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       />
                     </Grid>
-                    <Grid item xs={12} sm={6}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         label="Store Email"
                         variant="standard"
@@ -361,7 +406,7 @@ const Setting = () => {
                 <Divider sx={{ mb: 3 }} />
 
                 <Grid container spacing={3} sx={{ mb: 4 }}>
-                  <Grid item xs={12} sm={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
                       label="Currency Symbol"
                       variant="standard"
@@ -373,7 +418,7 @@ const Setting = () => {
                       onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
                       label="Tax Rate (%)"
                       variant="standard"
@@ -538,7 +583,7 @@ const Setting = () => {
           </Grid>
 
           {/* Logo Identity Card */}
-          <Grid item xs={12} md={5}>
+          <Grid size={{ xs: 12, md: 5 }}>
             <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1.5, height: '100%' }}>
               <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', boxSizing: 'border-box' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0f172a', width: '100%', mb: 2.5 }}>
@@ -602,6 +647,83 @@ const Setting = () => {
           </Grid>
         </Grid>
       </form>
+
+      {/* Danger Zone */}
+      <Card sx={{ border: '1px solid #fee2e2', bgcolor: '#fff5f5', borderRadius: 1.5, mt: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#991b1b' }}>
+              Danger Zone (Reset Data)
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#7f1d1d' }}>
+              Wipe all transactional history and master data (products, sales, customers, suppliers, expenses, receivables/payables, warehouses, staff). This action is irreversible. <strong>Your user login account and store settings will be kept.</strong>
+            </Typography>
+            <Box>
+              <Button
+                variant="contained"
+                color="error"
+                onClick={() => setOpenClearDialog(true)}
+                sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
+              >
+                Clear All Data
+              </Button>
+            </Box>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Clear Data Dialog */}
+      <Dialog
+        open={openClearDialog}
+        onClose={() => !clearLoading && setOpenClearDialog(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, pb: 1, color: '#991b1b' }}>
+          Are you absolutely sure?
+        </DialogTitle>
+        <Divider sx={{ mx: 3 }} />
+        <DialogContent sx={{ py: 3 }}>
+          <Stack spacing={2}>
+            <Typography variant="body2" sx={{ color: '#475569' }}>
+              This will permanently delete all sales transactions, products, categories, customers, suppliers, expenses, staff, warehouses, and payables/receivables.
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#7f1d1d', fontWeight: 600 }}>
+              To confirm, please type "CLEAR" in the box below:
+            </Typography>
+            <TextField
+              variant="outlined"
+              size="small"
+              fullWidth
+              placeholder="CLEAR"
+              value={confirmClearText}
+              onChange={(e) => setConfirmClearText(e.target.value)}
+              disabled={clearLoading}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => { setOpenClearDialog(false); setConfirmClearText(''); }}
+            color="inherit"
+            variant="outlined"
+            disabled={clearLoading}
+            sx={{ borderRadius: 1.5, textTransform: 'none' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleClearAllData}
+            color="error"
+            variant="contained"
+            disabled={confirmClearText !== 'CLEAR' || clearLoading}
+            sx={{ borderRadius: 1.5, textTransform: 'none', boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}
+          >
+            {clearLoading ? 'Clearing Data...' : 'Permanently Wipe Data'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Global Success Notifications */}
       <Snackbar

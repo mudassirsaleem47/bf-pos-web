@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { getSettings, updateSettings } = require('../controllers/settingController');
+const { getSettings, updateSettings, clearData } = require('../controllers/settingController');
 
 const isVercel = process.env.VERCEL === '1' || !!process.env.VERCEL;
 const uploadDir = isVercel
@@ -37,5 +37,6 @@ const upload = multer({
 
 router.get('/', getSettings);
 router.put('/', upload.single('logo'), updateSettings);
+router.delete('/clear-data', clearData);
 
 module.exports = router;

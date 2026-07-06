@@ -332,10 +332,10 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
           >
             <Box sx={{ px: 2, py: 1.5 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
-                {user?.name || 'StockSphere User'}
+                {user?.name || 'BF Makeup User'}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
-                {user?.email || 'user@stocksphere.com'}
+                {user?.email || 'user@BF Makeup.com'}
               </Typography>
             </Box>
             <Divider />

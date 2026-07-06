@@ -1,16 +1,95 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/src/assets/stocksherefav.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <title>StockSphere</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/src/assets/stocksherefav.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <title>BF Makeup Store</title>
+</head>
+
+<body>
+  <div id="root">
+    <style>
+      .loader-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100vw;
+        height: 100vh;
+        background-color: #ffffff;
+        font-family: 'Inter', sans-serif;
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 9999;
+      }
+
+      .loader-logo {
+        width: 130px;
+        height: auto;
+        object-fit: contain;
+        margin-bottom: 12px;
+      }
+
+      .loader-text {
+        font-size: 13.5px;
+        font-weight: 500;
+        color: #64748b;
+        margin-bottom: 18px;
+        letter-spacing: 0.5px;
+      }
+
+      .loader-line-container {
+        width: 200px;
+        height: 5px;
+        background-color: #e2e8f0;
+        border-radius: 2px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .loader-line {
+        position: absolute;
+        left: 0;
+        height: 100%;
+        width: 50px;
+        background-color: #e11d48;
+        /* Red/pink to match the makeup theme lip color */
+        border-radius: 2px;
+        animation: loading-slide 1.3s infinite ease-in-out;
+      }
+
+      @keyframes loading-slide {
+        0% {
+          left: -50px;
+          width: 50px;
+        }
+
+        50% {
+          width: 80px;
+        }
+
+        100% {
+          left: 180px;
+          width: 50px;
+        }
+      }
+    </style>
+    <div class="loader-container">
+      <img class="loader-logo" src="/bglogo.avif" alt="But First, Makeup Logo" />
+      <div class="loader-text">Loading your Dashboard</div>
+      <div class="loader-line-container">
+        <div class="loader-line"></div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
 </html>
