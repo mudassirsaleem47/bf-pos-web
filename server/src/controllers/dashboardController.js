@@ -107,7 +107,7 @@ const getNotifications = async (req, res) => {
         id: `expiry-${p.id}`,
         type: 'expiry',
         title: isExpired ? 'Product Expired' : 'Product Expiring Soon',
-        message: isExpired 
+        message: isExpired
           ? `${p.name} expired on ${new Date(p.expiryDate).toLocaleDateString()}.`
           : `${p.name} will expire on ${new Date(p.expiryDate).toLocaleDateString()}.`,
         severity: isExpired ? 'error' : 'warning',
@@ -119,8 +119,8 @@ const getNotifications = async (req, res) => {
       list.push({
         id: `loan-${l.id}`,
         type: 'loan',
-        title: 'Overdue Loan / Debt',
-        message: `${l.type === 'Payable' ? 'Debt to' : 'Loan to'} ${l.partnerName} of Rs. ${l.amount.toFixed(2)} is overdue.`,
+        title: 'Overdue (Rec/Pay)',
+        message: `${l.type === 'Payable' ? 'Payable to' : 'Receivable from'} ${l.partnerName} of Rs. ${l.amount.toFixed(2)} is overdue.`,
         severity: 'error',
         date: l.dueDate
       });

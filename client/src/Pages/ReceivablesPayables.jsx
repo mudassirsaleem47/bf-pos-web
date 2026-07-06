@@ -21,7 +21,9 @@ import {
   Select,
   FormControl,
   InputLabel,
-  Chip
+  Chip,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -37,9 +39,12 @@ import dayjs from 'dayjs';
 
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost') ? import.meta.env.VITE_API_URL : window.location.origin);
 
-const Loan = () => {
+const ReceivablesPayables = () => {
   const navigate = useNavigate();
   const [loans, setLoans] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [tabValue, setTabValue] = useState(0);
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -73,55 +78,67 @@ const Loan = () => {
     return token;
   };
 
-  const fetchSettings = async () => {
-    try {
-      const token = getToken();
-      if (!token) return;
-      const res = await fetch(`${API_URL}/api/settings`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.currency) setCurrency(data.currency);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchLoans = async () => {
+  const fetchFinancialData = async () => {
     setLoading(true);
     setError('');
     try {
       const token = getToken();
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/api/loans`, {
+      // 1. Fetch Manual Loans
+      const loanRes = await fetch(`${API_URL}/api/loans`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-
-      if (response.status === 401 || response.status === 403) {
+      if (loanRes.status === 401 || loanRes.status === 403) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         navigate('/login');
         return;
       }
+      const loanData = await loanRes.json();
+      if (loanRes.ok) {
+        setLoans(Array.isArray(loanData) ? loanData : []);
+      }
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to fetch loans');
+      // 2. Fetch Customers
+      const custRes = await fetch(`${API_URL}/api/customers`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const custData = await custRes.json();
+      if (custRes.ok) {
+        setCustomers(Array.isArray(custData) ? custData : []);
+      }
 
-      setLoans(Array.isArray(data) ? data : []);
+      // 3. Fetch Supplier Invoices
+      const invRes = await fetch(`${API_URL}/api/supplier-invoices`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const invData = await invRes.json();
+      if (invRes.ok) {
+        setInvoices(Array.isArray(invData) ? invData : []);
+      }
+
+      // 4. Fetch Settings
+      const settingsRes = await fetch(`${API_URL}/api/settings`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        if (settingsData && settingsData.currency) {
+          setCurrency(settingsData.currency);
+        }
+      }
+
       setSelected([]);
     } catch (err) {
-      setError(err.message || 'Something went wrong fetching loans');
+      setError(err.message || 'Failed to fetch financial data');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchLoans();
-    fetchSettings();
+    fetchFinancialData();
   }, []);
 
   const handleOpenAdd = () => {
@@ -161,7 +178,7 @@ const Loan = () => {
     setError('');
 
     if (!formData.partnerName.trim() || !formData.type || !formData.amount) {
-      setError('Borrower/Lender Name, Type, and Amount are required');
+      setError('Party Name, Type, and Amount are required');
       return;
     }
 
@@ -198,13 +215,13 @@ const Loan = () => {
       }
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to save loan');
+      if (!response.ok) throw new Error(data.message || 'Failed to save record');
 
-      setSuccessMsg(isEdit ? 'Loan details updated successfully!' : 'Loan recorded successfully!');
-      fetchLoans();
+      setSuccessMsg(isEdit ? 'Details updated successfully!' : 'Record saved successfully!');
+      fetchFinancialData();
       setOpenDialog(false);
     } catch (err) {
-      setError(err.message || 'Failed to submit loan details');
+      setError(err.message || 'Failed to submit details');
     } finally {
       setLoading(false);
     }
@@ -233,39 +250,55 @@ const Loan = () => {
       }
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to delete loan(s)');
+      if (!response.ok) throw new Error(data.message || 'Failed to delete record(s)');
 
-      setSuccessMsg('Loan record(s) deleted!');
-      fetchLoans();
+      setSuccessMsg('Record(s) deleted successfully!');
+      fetchFinancialData();
       setOpenDeleteDialog(false);
       setSelected([]);
     } catch (err) {
-      setError(err.message || 'Failed to delete loan(s)');
+      setError(err.message || 'Failed to delete record(s)');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+
   // Stats calculation
-  const totalPayable = loans
+  const manualPayable = loans
     .filter(l => l.type === 'Payable' && l.status !== 'Paid')
     .reduce((sum, l) => sum + l.amount, 0);
 
-  const totalReceivable = loans
+  const supplierPayable = invoices
+    .filter(inv => inv.due > 0)
+    .reduce((sum, inv) => sum + inv.due, 0);
+
+  const totalPayable = manualPayable + supplierPayable;
+
+  const manualReceivable = loans
     .filter(l => l.type === 'Receivable' && l.status !== 'Paid')
     .reduce((sum, l) => sum + l.amount, 0);
 
-  const netDebtLiability = totalPayable - totalReceivable;
+  const customerReceivable = customers
+    .filter(c => c.balance > 0)
+    .reduce((sum, c) => sum + c.balance, 0);
+
+  const totalReceivable = manualReceivable + customerReceivable;
+
+  const netBalance = totalPayable - totalReceivable;
 
   const columns = [
-    { id: 'partnerName', label: 'Borrower / Lender', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
+    { id: 'partnerName', label: 'Party Name', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
     {
       id: 'type',
-      label: 'Loan Type',
+      label: 'Type',
       sortable: true,
       render: (row) => (
         <Chip
-          label={row.type}
+          label={row.type === 'Payable' ? 'Payable' : 'Receivable'}
           size="small"
           icon={row.type === 'Payable' ? <DebtTakenIcon sx={{ fontSize: 14 }} /> : <DebtGivenIcon sx={{ fontSize: 14 }} />}
           sx={{
@@ -280,7 +313,7 @@ const Loan = () => {
     },
     {
       id: 'amount',
-      label: 'Principal Amount',
+      label: 'Amount',
       sortable: true,
       render: (row) => `${currency} ${parseFloat(row.amount).toFixed(2)}`
     },
@@ -325,7 +358,7 @@ const Loan = () => {
         );
       }
     },
-    { id: 'description', label: 'Purpose / Remarks', sortable: false },
+    { id: 'description', label: 'Remarks / Purpose', sortable: false },
     {
       id: 'actions',
       label: 'Actions',
@@ -342,6 +375,57 @@ const Loan = () => {
     }
   ];
 
+  const customerColumns = [
+    { id: 'name', label: 'Customer Name', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
+    { id: 'phone', label: 'Phone', sortable: true, render: (row) => row.phone || '-' },
+    { id: 'address', label: 'Address', sortable: false, render: (row) => row.address || '-' },
+    {
+      id: 'balance',
+      label: 'Balance Owed',
+      sortable: true,
+      render: (row) => `${currency} ${parseFloat(row.balance).toFixed(2)}`
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      render: (row) => (
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => navigate('/customers')}
+          sx={{ fontSize: '0.75rem', py: 0.25, borderRadius: 1 }}
+        >
+          View & Pay
+        </Button>
+      )
+    }
+  ];
+
+  const invoiceColumns = [
+    { id: 'invoiceNo', label: 'Invoice No', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
+    { id: 'supplierName', label: 'Supplier', sortable: true, render: (row) => row.supplier?.name || 'N/A' },
+    { id: 'warehouseName', label: 'Warehouse', sortable: true, render: (row) => row.warehouse?.name || 'N/A' },
+    { id: 'date', label: 'Invoice Date', sortable: true, render: (row) => dayjs(row.date).format('DD/MM/YYYY') },
+    { id: 'grandTotal', label: 'Grand Total', sortable: true, render: (row) => `${currency} ${parseFloat(row.grandTotal).toFixed(2)}` },
+    { id: 'due', label: 'Due Balance', sortable: true, render: (row) => `${currency} ${parseFloat(row.due).toFixed(2)}` },
+    {
+      id: 'actions',
+      label: 'Actions',
+      sortable: false,
+      render: (row) => (
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => navigate('/suppliers-invoice')}
+          sx={{ fontSize: '0.75rem', py: 0.25, borderRadius: 1 }}
+        >
+          View Invoice
+        </Button>
+      )
+    }
+  ];
+
   const bulkActions = [
     {
       label: 'Delete Selected',
@@ -353,11 +437,11 @@ const Loan = () => {
 
   return (
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
-      
+
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
-          Store Loans & Debt Liabilities
+          Finance
         </Typography>
         <Button
           variant="contained"
@@ -365,7 +449,7 @@ const Loan = () => {
           onClick={handleOpenAdd}
           sx={{ borderRadius: 2 }}
         >
-          Record Loan / Debt
+          Record Receivable / Payable
         </Button>
       </Box>
 
@@ -379,12 +463,15 @@ const Loan = () => {
               <Box sx={{ p: 1.5, bgcolor: '#fef2f2', borderRadius: 1.5, display: 'flex', color: '#ef4444' }}>
                 <DebtTakenIcon sx={{ fontSize: 28 }} />
               </Box>
-              <Box>
+              <Box sx={{ flexGrow: 1 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
-                  Total Debts Payable
+                  Total Payables
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#dc2626' }}>
                   {currency} {totalPayable.toFixed(2)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem', display: 'block', mt: 0.5 }}>
+                  Supplier: {currency}{supplierPayable.toFixed(2)} | Manual: {currency}{manualPayable.toFixed(2)}
                 </Typography>
               </Box>
             </CardContent>
@@ -397,12 +484,15 @@ const Loan = () => {
               <Box sx={{ p: 1.5, bgcolor: '#ecfdf5', borderRadius: 1.5, display: 'flex', color: '#10b981' }}>
                 <DebtGivenIcon sx={{ fontSize: 28 }} />
               </Box>
-              <Box>
+              <Box sx={{ flexGrow: 1 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
-                  Total Loans Receivable
+                  Total Receivables
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#059669' }}>
                   {currency} {totalReceivable.toFixed(2)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem', display: 'block', mt: 0.5 }}>
+                  Customer: {currency}{customerReceivable.toFixed(2)} | Manual: {currency}{manualReceivable.toFixed(2)}
                 </Typography>
               </Box>
             </CardContent>
@@ -415,12 +505,15 @@ const Loan = () => {
               <Box sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5, display: 'flex', color: '#64748b' }}>
                 <LoanIcon sx={{ fontSize: 28 }} />
               </Box>
-              <Box>
+              <Box sx={{ flexGrow: 1 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
-                  Net Debt Liability
+                  Net Financial Balance
                 </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: netDebtLiability > 0 ? '#dc2626' : '#059669' }}>
-                  {currency} {netDebtLiability.toFixed(2)}
+                <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: netBalance > 0 ? '#dc2626' : '#059669' }}>
+                  {currency} {Math.abs(netBalance).toFixed(2)} {netBalance > 0 ? '(Payable)' : '(Receivable)'}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem', display: 'block', mt: 0.5 }}>
+                  Overall cash position
                 </Typography>
               </Box>
             </CardContent>
@@ -428,18 +521,51 @@ const Loan = () => {
         </Grid>
       </Grid>
 
-      {/* Loans Table */}
-      <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-        <DataTable
-          columns={columns}
-          data={loans}
-          loading={loading}
-          selected={selected}
-          onSelectedChange={setSelected}
-          bulkActions={bulkActions}
-          searchPlaceholder="Search borrower/lender name..."
-        />
-      </Card>
+      {/* Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 1 }}>
+        <Tabs value={tabValue} onChange={handleTabChange} aria-label="finance details tabs">
+          <Tab label="Manual" sx={{ textTransform: 'none', fontWeight: 600 }} />
+          <Tab label={`Customer Outstanding (${currency}${customerReceivable.toFixed(0)})`} sx={{ textTransform: 'none', fontWeight: 600 }} />
+          <Tab label={`Supplier Invoice Dues (${currency}${supplierPayable.toFixed(0)})`} sx={{ textTransform: 'none', fontWeight: 600 }} />
+        </Tabs>
+      </Box>
+
+      {/* Table Section */}
+      {tabValue === 0 && (
+        <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+          <DataTable
+            columns={columns}
+            data={loans}
+            loading={loading}
+            selected={selected}
+            onSelectedChange={setSelected}
+            bulkActions={bulkActions}
+            searchPlaceholder="Search party name..."
+          />
+        </Card>
+      )}
+
+      {tabValue === 1 && (
+        <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+          <DataTable
+            columns={customerColumns}
+            data={customers.filter(c => c.balance > 0)}
+            loading={loading}
+            searchPlaceholder="Search customer..."
+          />
+        </Card>
+      )}
+
+      {tabValue === 2 && (
+        <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+          <DataTable
+            columns={invoiceColumns}
+            data={invoices.filter(inv => inv.due > 0)}
+            loading={loading}
+            searchPlaceholder="Search invoice..."
+          />
+        </Card>
+      )}
 
       {/* Add / Edit Dialog */}
       <Dialog
@@ -450,14 +576,14 @@ const Loan = () => {
         PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
       >
         <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
-          {isEdit ? 'Edit Loan Record' : 'Record New Loan / Debt'}
+          {isEdit ? 'Edit Record' : 'Record New Receivable / Payable'}
         </DialogTitle>
         <Divider sx={{ mx: 3 }} />
         <form onSubmit={handleFormSubmit}>
           <DialogContent sx={{ py: 3 }}>
             <Stack spacing={3}>
               <TextField
-                label="Borrower / Lender Name"
+                label="Party Name"
                 variant="standard"
                 required
                 fullWidth
@@ -467,18 +593,18 @@ const Loan = () => {
               />
 
               <FormControl variant="standard" required fullWidth size="small">
-                <InputLabel>Loan Type</InputLabel>
+                <InputLabel>Type</InputLabel>
                 <Select
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                 >
-                  <MenuItem value="Payable">Payable (Store owes money)</MenuItem>
-                  <MenuItem value="Receivable">Receivable (Owed to store)</MenuItem>
+                  <MenuItem value="Payable">Payable (Store owes Money)</MenuItem>
+                  <MenuItem value="Receivable">Receivable (Money Owed to Store)</MenuItem>
                 </Select>
               </FormControl>
 
               <TextField
-                label={`Principal Amount (${currency})`}
+                label={`Amount (${currency})`}
                 variant="standard"
                 required
                 fullWidth
@@ -490,9 +616,8 @@ const Loan = () => {
               />
 
               <TextField
-                label="Interest Rate (%)"
+                label="Interest Rate (%) (Optional)"
                 variant="standard"
-                required
                 fullWidth
                 type="number"
                 inputProps={{ min: 0, step: 'any' }}
@@ -526,7 +651,7 @@ const Loan = () => {
               </FormControl>
 
               <TextField
-                label="Purpose / Remarks"
+                label="Remarks / Purpose"
                 variant="standard"
                 fullWidth
                 size="small"
@@ -551,7 +676,7 @@ const Loan = () => {
               variant="contained"
               sx={{ borderRadius: 1.5 }}
             >
-              {isEdit ? 'Save Changes' : 'Record Loan'}
+              {isEdit ? 'Save Changes' : 'Record'}
             </Button>
           </DialogActions>
         </form>
@@ -571,7 +696,7 @@ const Loan = () => {
         <Divider sx={{ mx: 3 }} />
         <DialogContent sx={{ py: 3 }}>
           <Typography variant="body2" sx={{ color: '#475569' }}>
-            Are you sure you want to delete {deleteIds.length} selected loan records? This action cannot be undone.
+            Are you sure you want to delete {deleteIds.length} selected records? This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -609,4 +734,4 @@ const Loan = () => {
   );
 };
 
-export default Loan;
+export default ReceivablesPayables;

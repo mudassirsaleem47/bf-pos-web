@@ -56,10 +56,10 @@ const Documentation = () => {
       details: 'When acquiring fresh stock, log a Supplier Invoice. Select the Supplier, target Warehouse, and Invoice Date. You can upload an image/PDF file of the physical invoice for filing. Add items purchased with quantity and rate. The system calculates due balances and lets you mark invoices as "Full Paid" or pay partially.'
     },
     {
-      title: 'Operating Expenses & Loans',
+      title: 'Operating Expenses & Receivables/Payables',
       icon: <SettingsIcon sx={{ color: '#ea580c' }} />,
-      desc: 'Log warehouse rent, utility bills, employee payroll, and bank loan obligations.',
-      details: 'Keep track of store outflows in the Expenses page. You can categorize costs (Rent, Utility, Payroll, Inventory, etc.) and record billing dates. In the Loans page, track cash borrowings (Payables) or loans given out (Receivables) to monitor net liabilities.'
+      desc: 'Log warehouse rent, utility bills, employee payroll, and borrow/lend transactions.',
+      details: 'Keep track of store outflows in the Expenses page. You can categorize costs (Rent, Utility, Payroll, Inventory, etc.) and record billing dates. In the Receivables & Payables page, track cash borrowings (Payables) or loans/credits given out (Receivables) to monitor net liabilities.'
     },
     {
       title: 'Analytical Reports',

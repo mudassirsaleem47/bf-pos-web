@@ -409,7 +409,7 @@ const DashboardOverview = () => {
 
 
   const quickActions = [
-    { label: 'Cash Receivable', path: '/loan', icon: <MoneyIcon sx={{ fontSize: 24 }} /> },
+    { label: 'Finance', path: '/receivables-payables', icon: <MoneyIcon sx={{ fontSize: 24 }} /> },
     { label: 'Add Products', path: '/products/add', icon: <CartIcon sx={{ fontSize: 24 }} /> },
     { label: 'Add Invoice', path: '/pos', icon: <InvoiceIcon sx={{ fontSize: 24 }} /> },
     { label: 'Company Info', path: '/setting', icon: <SettingsIcon sx={{ fontSize: 24 }} /> }

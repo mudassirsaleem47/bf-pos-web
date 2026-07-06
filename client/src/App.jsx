@@ -20,7 +20,7 @@ import Setting from './Pages/Setting.jsx';
 import Transaction from './Pages/Transaction.jsx';
 import Customers from './Pages/Customers.jsx';
 import Expenses from './Pages/Expenses.jsx';
-import Loan from './Pages/Loan.jsx';
+import ReceivablesPayables from './Pages/ReceivablesPayables.jsx';
 import Staff from './Pages/Staff.jsx';
 import Reports from './Pages/Reports.jsx';
 import Documentation from './Pages/Documentation.jsx';
@@ -119,7 +119,7 @@ const App = () => {
             <Route path="invoice" element={<Transaction />} />
             <Route path="transaction" element={<Transaction />} />
             <Route path="expenses" element={<Expenses />} />
-            <Route path="loan" element={<Loan />} />
+            <Route path="receivables-payables" element={<ReceivablesPayables />} />
             <Route path="staff" element={<Staff />} />
             <Route path="reports" element={<Reports />} />
             <Route path="setting" element={<Setting />} />
