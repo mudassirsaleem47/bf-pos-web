@@ -100,8 +100,8 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
         <Link to="/dashboard" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
           <Box
             component="img"
-            src="/bglogo.avif"
-            alt="Dawn Education Mart Logo"
+            src="/bglogo.png"
+            alt="storeLogo"
             sx={{
               width: isCollapsed ? 32 : 120,
               height: isCollapsed ? 32 : 'auto',
