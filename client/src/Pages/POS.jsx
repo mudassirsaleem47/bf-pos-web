@@ -32,7 +32,7 @@ import {
   Checkbox,
   FormControlLabel,
 } from '@mui/material';
-import { Delete as DeleteIcon, Print as PrintIcon, Clear as ClearIcon, AssignmentReturn as ReturnIcon, CheckCircle as CheckCircleIcon, Usb as UsbIcon } from '@mui/icons-material';
+import { Delete as DeleteIcon, Print as PrintIcon, Clear as ClearIcon, AssignmentReturn as ReturnIcon, CheckCircle as CheckCircleIcon, Usb as UsbIcon, Add as AddIcon } from '@mui/icons-material';
 import Barcode from 'react-barcode';
 import { usbPrinter } from '../utils/usbPrinter';
 
@@ -45,6 +45,8 @@ const POS = () => {
 
   // POS State
   const [products, setProducts] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [cart, setCart] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [productInputValue, setProductInputValue] = useState('');
@@ -62,6 +64,19 @@ const POS = () => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [lastSale, setLastSale] = useState(null);
+
+  // Add Customer Dialog States
+  const [openAddCustomerDialog, setOpenAddCustomerDialog] = useState(false);
+  const [addCustomerFormData, setAddCustomerFormData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    loyaltyPoints: '0',
+    balance: '0'
+  });
+  const [addCustomerError, setAddCustomerError] = useState('');
+  const [addCustomerLoading, setAddCustomerLoading] = useState(false);
 
   // Printer Configuration States
   const [printMethod, setPrintMethod] = useState(() => localStorage.getItem('printer_method') || 'browser');
@@ -84,6 +99,62 @@ const POS = () => {
   const [returnItems, setReturnItems] = useState({});
   const [returnError, setReturnError] = useState('');
   const [processingReturn, setProcessingReturn] = useState(false);
+
+  const handleAddCustomerSubmit = async (e) => {
+    e.preventDefault();
+    setAddCustomerError('');
+
+    if (!addCustomerFormData.name.trim()) {
+      setAddCustomerError('Name is required');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) return;
+
+    setAddCustomerLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/customers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: addCustomerFormData.name.trim(),
+          phone: addCustomerFormData.phone.trim(),
+          email: addCustomerFormData.email.trim(),
+          address: addCustomerFormData.address.trim(),
+          loyaltyPoints: parseInt(addCustomerFormData.loyaltyPoints) || 0,
+          balance: parseFloat(addCustomerFormData.balance) || 0
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to save customer');
+
+      setSuccessMsg('Customer added successfully!');
+      // Refetch customer list
+      await fetchCustomers();
+      // Set the newly created customer as selected
+      setSelectedCustomer(data);
+      // Close dialog
+      setOpenAddCustomerDialog(false);
+      // Reset form
+      setAddCustomerFormData({
+        name: '',
+        phone: '',
+        email: '',
+        address: '',
+        loyaltyPoints: '0',
+        balance: '0'
+      });
+    } catch (err) {
+      setAddCustomerError(err.message || 'Failed to submit customer details');
+    } finally {
+      setAddCustomerLoading(false);
+    }
+  };
 
   const handleFindSale = async () => {
     setReturnError('');
@@ -257,9 +328,26 @@ const POS = () => {
     }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      const response = await fetch(`${API_URL}/api/customers`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCustomers(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch customers:', err);
+    }
+  };
+
   useEffect(() => {
     fetchSettings();
     fetchProducts();
+    fetchCustomers();
     focusProductField();
 
     // Auto-connect to WebUSB printer if previously connected
@@ -396,6 +484,7 @@ const POS = () => {
     setDiscountPercent(0);
     setCash('');
     setLastSale(null);
+    setSelectedCustomer(null);
     setError('');
     focusProductField();
   };
@@ -415,8 +504,8 @@ const POS = () => {
       setError('Cart is empty.');
       return;
     }
-    if (paid < total) {
-      setError('Paid amount is less than the total.');
+    if (paid < total && !selectedCustomer) {
+      setError('Customer is required for credit transactions (Paid amount is less than total).');
       return;
     }
 
@@ -444,6 +533,7 @@ const POS = () => {
           paidAmount: paid,
           discount: finalDiscount,
           tax: 0,
+          customerId: selectedCustomer?.id || null,
         }),
       });
 
@@ -454,10 +544,16 @@ const POS = () => {
 
       const sale = await response.json();
       setLastSale(sale);
-      setSuccessMsg(`Checkout successful! Receipt: ${sale.receiptNo}`);
+      const remainingCredit = total - paid;
+      setSuccessMsg(
+        `Checkout successful! Receipt: ${sale.receiptNo}${
+          remainingCredit > 0 ? ` (Added Rs. ${remainingCredit.toFixed(2)} to ${selectedCustomer?.name || 'Customer'}'s khata)` : ''
+        }`
+      );
       setCart([]);
       setCash('');
       setDiscountPercent(0);
+      setSelectedCustomer(null);
       focusProductField();
     } catch (err) {
       setError(err.message || 'Failed to process checkout');
@@ -489,6 +585,11 @@ const POS = () => {
         <div className="thermal-receipt-flex">
           <span>Receipt No: {lastSale?.receiptNo || 'R-XXXX'}</span>
         </div>
+        {lastSale?.customer && (
+          <div className="thermal-receipt-flex">
+            <span>Customer: {lastSale.customer.name}</span>
+          </div>
+        )}
         <div className="thermal-receipt-divider" />
 
         {(lastSale ? lastSale.items : cart).map((item, idx) => (
@@ -520,10 +621,17 @@ const POS = () => {
           <span>Paid Cash:</span>
           <span>{settings.currency}{(lastSale ? lastSale.paidAmount : paid).toFixed(2)}</span>
         </div>
-        <div className="thermal-receipt-flex">
-          <span>Change Return:</span>
-          <span>{settings.currency}{(lastSale ? lastSale.change : change).toFixed(2)}</span>
-        </div>
+        {((lastSale ? lastSale.totalAmount : total) > (lastSale ? lastSale.paidAmount : paid)) ? (
+          <div className="thermal-receipt-flex" style={{ fontWeight: 'bold' }}>
+            <span>Remaining Due (Credit):</span>
+            <span>{settings.currency}{(lastSale ? (lastSale.totalAmount - lastSale.paidAmount) : (total - paid)).toFixed(2)}</span>
+          </div>
+        ) : (
+          <div className="thermal-receipt-flex">
+            <span>Change Return:</span>
+            <span>{settings.currency}{(lastSale ? lastSale.change : change).toFixed(2)}</span>
+          </div>
+        )}
         <div className="thermal-receipt-divider" />
         <div className="thermal-receipt-center" style={{ marginTop: '10px', marginBottom: '10px' }}>
           <p style={{ margin: '4px 0' }}>{settings.receiptFooter}</p>
@@ -735,6 +843,38 @@ const POS = () => {
               <Divider sx={{ mb: 2 }} />
 
               <Stack spacing={2.5}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <Autocomplete
+                    options={customers}
+                    getOptionLabel={(option) => `${option.name} ${option.phone ? `(${option.phone})` : ''}`}
+                    value={selectedCustomer}
+                    onChange={(event, newValue) => {
+                      setSelectedCustomer(newValue);
+                    }}
+                    renderInput={(params) => (
+                      <TextField 
+                        {...params} 
+                        label="Select Customer (Required for Credit)" 
+                        size="small" 
+                        placeholder="Search customer name/phone..." 
+                      />
+                    )}
+                    sx={{ flexGrow: 1 }}
+                  />
+                  <IconButton 
+                    color="primary" 
+                    onClick={() => setOpenAddCustomerDialog(true)}
+                    sx={{ 
+                      border: '1px solid #e2e8f0', 
+                      borderRadius: 1.5,
+                      p: '8px',
+                      '&:hover': { bgcolor: '#eff6ff', borderColor: '#bfdbfe' } 
+                    }}
+                  >
+                    <AddIcon sx={{ fontSize: 20 }} />
+                  </IconButton>
+                </Box>
+
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2" color="text.secondary">Items Count:</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>{cart.reduce((sum, item) => sum + item.qty, 0)}</Typography>
@@ -794,7 +934,7 @@ const POS = () => {
                   variant="contained"
                   color="primary"
                   fullWidth
-                  disabled={loading || cart.length === 0 || paid < total}
+                  disabled={loading || cart.length === 0 || (paid < total && !selectedCustomer)}
                   onClick={handleCheckout}
                   sx={{ py: 1.25, borderRadius: 2 }}
                 >
@@ -972,6 +1112,128 @@ const POS = () => {
             {processingReturn ? 'Processing...' : 'Process Refund'}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Quick Add Customer Dialog */}
+      <Dialog
+        open={openAddCustomerDialog}
+        onClose={() => {
+          if (!addCustomerLoading) {
+            setOpenAddCustomerDialog(false);
+            setAddCustomerError('');
+            setAddCustomerFormData({
+              name: '',
+              phone: '',
+              email: '',
+              address: '',
+              loyaltyPoints: '0',
+              balance: '0'
+            });
+          }
+        }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+          Add New Customer
+        </DialogTitle>
+        <Divider sx={{ mx: 3 }} />
+        <form onSubmit={handleAddCustomerSubmit}>
+          <DialogContent sx={{ py: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            {addCustomerError && <Alert severity="error">{addCustomerError}</Alert>}
+            <Stack spacing={3}>
+              <TextField
+                label="Customer Name"
+                variant="standard"
+                required
+                fullWidth
+                size="small"
+                value={addCustomerFormData.name}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, name: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Phone Number"
+                variant="standard"
+                fullWidth
+                size="small"
+                value={addCustomerFormData.phone}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, phone: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Email Address"
+                variant="standard"
+                fullWidth
+                type="email"
+                size="small"
+                value={addCustomerFormData.email}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, email: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Home/Billing Address"
+                variant="standard"
+                fullWidth
+                size="small"
+                value={addCustomerFormData.address}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, address: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Loyalty Program Points"
+                variant="standard"
+                fullWidth
+                type="number"
+                size="small"
+                value={addCustomerFormData.loyaltyPoints}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, loyaltyPoints: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Balance Owed (Credit)"
+                variant="standard"
+                fullWidth
+                type="number"
+                size="small"
+                value={addCustomerFormData.balance}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, balance: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => {
+                setOpenAddCustomerDialog(false);
+                setAddCustomerError('');
+                setAddCustomerFormData({
+                  name: '',
+                  phone: '',
+                  email: '',
+                  address: '',
+                  loyaltyPoints: '0',
+                  balance: '0'
+                });
+              }}
+              color="inherit"
+              variant="outlined"
+              disabled={addCustomerLoading}
+              sx={{ borderRadius: 1.5 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={addCustomerLoading}
+              sx={{ borderRadius: 1.5 }}
+            >
+              {addCustomerLoading ? 'Adding...' : 'Add Customer'}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
 
       {/* Global Cashier Notifications */}

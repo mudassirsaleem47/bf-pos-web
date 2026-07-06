@@ -293,6 +293,24 @@ const AddProduct = () => {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
 
+              <TextField
+                label="Barcode / SKU (Scan or Type)"
+                name="barcode"
+                placeholder="Scan barcode or enter manually"
+                variant="standard"
+                autoComplete="off"
+                fullWidth
+                size="small"
+                value={formData.barcode}
+                onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                  }
+                }}
+                helperText="Leave empty to auto-generate a barcode."
+              />
+
               <Stack direction="row" spacing={1} alignItems="flex-end">
                 <FormControl variant="standard" fullWidth size="small">
                   <InputLabel id="category-select-label">Categories</InputLabel>
@@ -489,15 +507,14 @@ const AddProduct = () => {
                 'Supplier Price',
                 'Sell Price *',
                 'Model',
-                'SKU',
                 'Suppliers'
               ].map((h, idx) => (
                 <Box
                   key={h}
                   sx={{
-                    width: { xs: '100%', md: '12.5%' },
+                    width: { xs: '100%', md: 'calc(100% / 7)' },
                     p: 1.5,
-                    borderRight: idx < 7 ? { md: '1px solid #cbd5e1' } : 'none',
+                    borderRight: idx < 6 ? { md: '1px solid #cbd5e1' } : 'none',
                     borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
                     boxSizing: 'border-box'
                   }}
@@ -514,7 +531,7 @@ const AddProduct = () => {
               {/* Quantity */}
               <Box
                 sx={{
-                  width: { xs: '100%', md: '12.5%' },
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
                   p: 1.5,
                   borderRight: { md: '1px solid #cbd5e1' },
                   borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
@@ -536,7 +553,7 @@ const AddProduct = () => {
               {/* Unit Code */}
               <Box
                 sx={{
-                  width: { xs: '100%', md: '12.5%' },
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
                   p: 1.5,
                   borderRight: { md: '1px solid #cbd5e1' },
                   borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
@@ -562,7 +579,7 @@ const AddProduct = () => {
               {/* Low Stock Alert */}
               <Box
                 sx={{
-                  width: { xs: '100%', md: '12.5%' },
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
                   p: 1.5,
                   borderRight: { md: '1px solid #cbd5e1' },
                   borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
@@ -584,7 +601,7 @@ const AddProduct = () => {
               {/* Supplier Price */}
               <Box
                 sx={{
-                  width: { xs: '100%', md: '12.5%' },
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
                   p: 1.5,
                   borderRight: { md: '1px solid #cbd5e1' },
                   borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
@@ -606,7 +623,7 @@ const AddProduct = () => {
               {/* Sell Price */}
               <Box
                 sx={{
-                  width: { xs: '100%', md: '12.5%' },
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
                   p: 1.5,
                   borderRight: { md: '1px solid #cbd5e1' },
                   borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
@@ -629,7 +646,7 @@ const AddProduct = () => {
               {/* Model */}
               <Box
                 sx={{
-                  width: { xs: '100%', md: '12.5%' },
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
                   p: 1.5,
                   borderRight: { md: '1px solid #cbd5e1' },
                   borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
@@ -647,34 +664,10 @@ const AddProduct = () => {
                 />
               </Box>
 
-              {/* SKU */}
-              <Box
-                sx={{
-                  width: { xs: '100%', md: '12.5%' },
-                  p: 1.5,
-                  borderRight: { md: '1px solid #cbd5e1' },
-                  borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
-                  boxSizing: 'border-box'
-                }}
-              >
-                <TextField
-                  placeholder="SKU"
-                  name="barcode"
-                  fullWidth
-                  variant="standard"
-                  value={formData.barcode}
-                  onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                  InputProps={{
-                    disableUnderline: true,
-                    style: { fontSize: '0.9rem' }
-                  }}
-                />
-              </Box>
-
               {/* Suppliers */}
               <Box
                 sx={{
-                  width: { xs: '100%', md: '12.5%' },
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
                   p: 1.5,
                   boxSizing: 'border-box'
                 }}

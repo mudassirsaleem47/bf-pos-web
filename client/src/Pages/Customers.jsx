@@ -16,7 +16,13 @@ import {
   Grid,
   Alert,
   Snackbar,
-  TextField
+  TextField,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -24,7 +30,9 @@ import {
   Delete as DeleteIcon,
   People as PeopleIcon,
   Star as StarIcon,
-  LocalActivity as PromoIcon
+  LocalActivity as PromoIcon,
+  AttachMoney as MoneyIcon,
+  AccountBalanceWallet as WalletIcon
 } from '@mui/icons-material';
 import DataTable from '../Components/DataTable';
 
@@ -48,12 +56,135 @@ const Customers = () => {
     phone: '',
     email: '',
     address: '',
-    loyaltyPoints: '0'
+    loyaltyPoints: '0',
+    balance: '0'
   });
 
   // Delete Dialog States
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [deleteIds, setDeleteIds] = useState([]);
+
+  // Payment Dialog States
+  const [openPaymentDialog, setOpenPaymentDialog] = useState(false);
+  const [paymentCustomer, setPaymentCustomer] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+
+  const handleOpenPayment = (customer) => {
+    setPaymentCustomer(customer);
+    setPaymentAmount(String(customer.balance || 0));
+    setPaymentError('');
+    setOpenPaymentDialog(true);
+  };
+
+  const handlePaymentSubmit = async (e) => {
+    e.preventDefault();
+    setPaymentError('');
+
+    const amt = parseFloat(paymentAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setPaymentError('Please enter a valid amount greater than 0.');
+      return;
+    }
+
+    if (amt > paymentCustomer.balance) {
+      setPaymentError(`Payment amount cannot exceed the owed balance of ${currency}${paymentCustomer.balance.toFixed(2)}.`);
+      return;
+    }
+
+    const token = getToken();
+    if (!token) return;
+
+    setLoading(true);
+    try {
+      const newBalance = Math.max(0, paymentCustomer.balance - amt);
+      const response = await fetch(`${API_URL}/api/customers/${paymentCustomer.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          balance: newBalance
+        })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to update payment');
+      }
+
+      setSuccessMsg(`Payment of ${currency}${amt.toFixed(2)} received successfully!`);
+      setOpenPaymentDialog(false);
+      fetchCustomers();
+    } catch (err) {
+      setPaymentError(err.message || 'Failed to submit payment details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderCustomerHistory = (customer) => {
+    const sales = customer.sales || [];
+
+    if (sales.length === 0) {
+      return (
+        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', pl: 4, py: 1 }}>
+          No sales transactions found.
+        </Typography>
+      );
+    }
+
+    return (
+      <Stack spacing={0.5} sx={{ pl: 2, py: 0.5 }}>
+        {sales.map((sale) => {
+          const saleDue = Math.max(0, sale.totalAmount - sale.paidAmount);
+          const itemsStr = sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
+          return (
+            <Box key={sale.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, color: '#475569', fontSize: '0.85rem' }}>
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="14" 
+                height="14" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                style={{ color: 'rgba(37, 99, 235, 0.6)', flexShrink: 0 }} 
+                aria-hidden="true"
+              >
+                <path d="m15 10 5 5-5 5"></path>
+                <path d="M4 4v7a4 4 0 0 0 4 4h12"></path>
+              </svg>
+              
+              <Typography variant="body2" sx={{ fontWeight: 700, color: '#1e293b', minWidth: 90 }}>
+                {sale.receiptNo}
+              </Typography>
+              
+              <Typography variant="body2" sx={{ color: '#64748b', minWidth: 160 }}>
+                {new Date(sale.createdAt).toLocaleString()}
+              </Typography>
+              
+              <Typography variant="body2" sx={{ color: '#475569', flexGrow: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: 400 }}>
+                {itemsStr}
+              </Typography>
+
+              <Typography variant="body2" sx={{ color: '#475569', fontWeight: 600, minWidth: 220, textAlign: 'right', pr: 2 }}>
+                Total: {currency}{sale.totalAmount.toFixed(2)} | Paid: {currency}{sale.paidAmount.toFixed(2)}
+                {saleDue > 0 && (
+                  <span style={{ color: '#ef4444', fontWeight: 700, marginLeft: '8px' }}>
+                    (Due: {currency}{saleDue.toFixed(2)})
+                  </span>
+                )}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Stack>
+    );
+  };
 
   const getToken = () => {
     const token = localStorage.getItem('token');
@@ -116,7 +247,7 @@ const Customers = () => {
   }, []);
 
   const handleOpenAdd = () => {
-    setFormData({ name: '', phone: '', email: '', address: '', loyaltyPoints: '0' });
+    setFormData({ name: '', phone: '', email: '', address: '', loyaltyPoints: '0', balance: '0' });
     setIsEdit(false);
     setEditId(null);
     setError('');
@@ -129,7 +260,8 @@ const Customers = () => {
       phone: customer.phone || '',
       email: customer.email || '',
       address: customer.address || '',
-      loyaltyPoints: String(customer.loyaltyPoints || 0)
+      loyaltyPoints: String(customer.loyaltyPoints || 0),
+      balance: String(customer.balance || 0)
     });
     setIsEdit(true);
     setEditId(customer.id);
@@ -165,7 +297,8 @@ const Customers = () => {
           phone: formData.phone.trim(),
           email: formData.email.trim(),
           address: formData.address.trim(),
-          loyaltyPoints: parseInt(formData.loyaltyPoints) || 0
+          loyaltyPoints: parseInt(formData.loyaltyPoints) || 0,
+          balance: parseFloat(formData.balance) || 0
         })
       });
 
@@ -229,6 +362,8 @@ const Customers = () => {
   const totalCustomers = customers.length;
   const totalLoyaltyPoints = customers.reduce((sum, c) => sum + (c.loyaltyPoints || 0), 0);
   const totalCustomerSales = customers.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
+  const totalReceivable = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
+  const creditCustomersCount = customers.filter(c => (c.balance || 0) > 0).length;
 
   const columns = [
     { id: 'name', label: 'Customer Name', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
@@ -247,6 +382,22 @@ const Customers = () => {
       )
     },
     {
+      id: 'balance',
+      label: 'Balance (Owed)',
+      sortable: true,
+      render: (row) => (
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            fontWeight: 700, 
+            color: (row.balance || 0) > 0 ? '#b91c1c' : '#16a34a' 
+          }}
+        >
+          {currency} {(row.balance || 0).toFixed(2)}
+        </Typography>
+      )
+    },
+    {
       id: 'totalSpent',
       label: 'Total Purchased',
       sortable: true,
@@ -258,13 +409,26 @@ const Customers = () => {
       label: 'Actions',
       sortable: false,
       render: (row) => (
-        <IconButton
-          onClick={(e) => { e.stopPropagation(); handleOpenEdit(row); }}
-          size="small"
-          sx={{ color: '#64748b', '&:hover': { color: '#2563eb' } }}
-        >
-          <EditIcon sx={{ fontSize: 18 }} />
-        </IconButton>
+        <Stack direction="row" spacing={0.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
+          {row.balance > 0 && (
+            <IconButton
+              onClick={() => handleOpenPayment(row)}
+              size="small"
+              sx={{ color: '#16a34a', '&:hover': { color: '#15803d', bgcolor: '#f0fdf4' } }}
+              title="Receive Payment"
+            >
+              <MoneyIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          )}
+          <IconButton
+            onClick={() => handleOpenEdit(row)}
+            size="small"
+            sx={{ color: '#64748b', '&:hover': { color: '#2563eb' } }}
+            title="Edit Customer"
+          >
+            <EditIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Stack>
       )
     }
   ];
@@ -300,7 +464,7 @@ const Customers = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3}>
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={6} md={2.4}>
           <Card sx={{ border: '1px solid #e2e8f0', bgcolor: '#fff', borderRadius: 1.5 }}>
             <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2.5, py: '20px !important' }}>
               <Box sx={{ p: 1.5, bgcolor: '#eff6ff', borderRadius: 1.5, display: 'flex', color: '#2563eb' }}>
@@ -318,7 +482,7 @@ const Customers = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={6} md={2.4}>
           <Card sx={{ border: '1px solid #e2e8f0', bgcolor: '#fff', borderRadius: 1.5 }}>
             <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2.5, py: '20px !important' }}>
               <Box sx={{ p: 1.5, bgcolor: '#fef9c3', borderRadius: 1.5, display: 'flex', color: '#ca8a04' }}>
@@ -336,7 +500,7 @@ const Customers = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={6} md={2.4}>
           <Card sx={{ border: '1px solid #e2e8f0', bgcolor: '#fff', borderRadius: 1.5 }}>
             <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2.5, py: '20px !important' }}>
               <Box sx={{ p: 1.5, bgcolor: '#ecfdf5', borderRadius: 1.5, display: 'flex', color: '#10b981' }}>
@@ -348,6 +512,42 @@ const Customers = () => {
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#10b981' }}>
                   {currency} {totalCustomerSales.toFixed(2)}
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={2.4}>
+          <Card sx={{ border: '1px solid #e2e8f0', bgcolor: '#fff', borderRadius: 1.5 }}>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2.5, py: '20px !important' }}>
+              <Box sx={{ p: 1.5, bgcolor: '#fef2f2', borderRadius: 1.5, display: 'flex', color: '#ef4444' }}>
+                <MoneyIcon sx={{ fontSize: 28 }} />
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
+                  Total Receivable
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#ef4444' }}>
+                  {currency} {totalReceivable.toFixed(2)}
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={2.4}>
+          <Card sx={{ border: '1px solid #e2e8f0', bgcolor: '#fff', borderRadius: 1.5 }}>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2.5, py: '20px !important' }}>
+              <Box sx={{ p: 1.5, bgcolor: '#faf5ff', borderRadius: 1.5, display: 'flex', color: '#a855f7' }}>
+                <WalletIcon sx={{ fontSize: 28 }} />
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
+                  Debtors (Khata Holders)
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#a855f7' }}>
+                  {creditCustomersCount}
                 </Typography>
               </Box>
             </CardContent>
@@ -365,6 +565,7 @@ const Customers = () => {
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
           searchPlaceholder="Search customers..."
+          renderExpandedRow={renderCustomerHistory}
         />
       </Card>
 
@@ -426,6 +627,15 @@ const Customers = () => {
                 value={formData.loyaltyPoints}
                 onChange={(e) => setFormData({ ...formData, loyaltyPoints: e.target.value })}
               />
+              <TextField
+                label="Balance Owed (Credit)"
+                variant="standard"
+                fullWidth
+                type="number"
+                size="small"
+                value={formData.balance}
+                onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+              />
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -483,6 +693,66 @@ const Customers = () => {
             Delete Customer(s)
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Pay Owed Balance Dialog */}
+      <Dialog
+        open={openPaymentDialog}
+        onClose={() => setOpenPaymentDialog(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, pb: 1, color: '#16a34a' }}>
+          Receive Payment
+        </DialogTitle>
+        <Divider sx={{ mx: 3 }} />
+        <form onSubmit={handlePaymentSubmit}>
+          <DialogContent sx={{ py: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            {paymentError && <Alert severity="error">{paymentError}</Alert>}
+            {paymentCustomer && (
+              <Box>
+                <Typography variant="body2" sx={{ color: '#475569', mb: 1 }}>
+                  Customer Name: <strong>{paymentCustomer.name}</strong>
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#475569', mb: 2 }}>
+                  Current Owed Balance: <strong>{currency}{paymentCustomer.balance.toFixed(2)}</strong>
+                </Typography>
+                <TextField
+                  label="Amount to Pay"
+                  type="number"
+                  variant="standard"
+                  required
+                  fullWidth
+                  size="small"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  slotProps={{
+                    htmlInput: { min: 0.01, step: 0.01 }
+                  }}
+                />
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => setOpenPaymentDialog(false)}
+              color="inherit"
+              variant="outlined"
+              sx={{ borderRadius: 1.5 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              color="success"
+              sx={{ borderRadius: 1.5 }}
+            >
+              Receive Payment
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
 
       {/* Global Success Notifications */}

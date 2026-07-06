@@ -32,6 +32,8 @@ import {
   ContentCopy as CopyIcon,
   FileDownload as ExportIcon,
   Print as PrintIcon,
+  KeyboardArrowRight as KeyboardArrowRightIcon,
+  KeyboardArrowDown as KeyboardArrowDownIcon,
 } from '@mui/icons-material';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -59,7 +61,8 @@ const DataTable = ({
   selected = [],
   onSelectedChange = () => { },
   bulkActions = [],
-  searchPlaceholder = 'Search...'
+  searchPlaceholder = 'Search...',
+  renderExpandedRow
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [orderBy, setOrderBy] = useState('');
@@ -67,6 +70,14 @@ const DataTable = ({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [copySnackbar, setCopySnackbar] = useState(false);
+  const [expandedRows, setExpandedRows] = useState({});
+
+  const toggleRowExpand = (id) => {
+    setExpandedRows(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
 
   // Visibility and Reordering States
   const [visibleColumns, setVisibleColumns] = useState(() => columns.map(c => c.id));
@@ -104,8 +115,12 @@ const DataTable = ({
     toggleSelection(id);
   };
 
-  const handleRowClick = (event, id) => {
-    toggleSelection(id);
+  const handleRowClick = (event, row) => {
+    if (renderExpandedRow) {
+      toggleRowExpand(row.id);
+    } else {
+      toggleSelection(row.id);
+    }
   };
 
   const toggleSelection = (id) => {
@@ -466,6 +481,7 @@ const DataTable = ({
                   size="small"
                 />
               </TableCell>
+              {renderExpandedRow && <TableCell style={{ width: 40 }}></TableCell>}
               <TableCell sx={{ pl: 1 }} style={{ width: 60 }}>No.</TableCell>
               {activeColumns.map((column) => (
                 <TableCell
@@ -501,7 +517,7 @@ const DataTable = ({
           <TableBody sx={{ '& tr': { '&:hover': { bgcolor: '#f8fafc' } }, '& td': { borderBottom: '1px solid #f1f5f9', py: 1.5, color: '#475569', fontSize: '0.85rem' } }}>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={activeColumns.length + 2} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={activeColumns.length + (renderExpandedRow ? 3 : 2)} align="center" sx={{ py: 6 }}>
                   <Typography variant="body2" color="text.secondary">
                     {searchQuery ? 'No matching records found.' : 'No data available.'}
                   </Typography>
@@ -511,46 +527,70 @@ const DataTable = ({
               paginatedData.map((row, index) => {
                 const isItemSelected = isSelected(row.id);
                 const itemIndex = page * rowsPerPage + index + 1;
+                const isExpanded = !!expandedRows[row.id];
 
                 return (
-                  <TableRow
-                    key={row.id}
-                    hover
-                    onClick={(event) => handleRowClick(event, row.id)}
-                    role="checkbox"
-                    aria-checked={isItemSelected}
-                    tabIndex={-1}
-                    selected={isItemSelected}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell padding="checkbox" sx={{ pl: 2 }} style={{ width: 50 }}>
-                      <Checkbox
-                        color="primary"
-                        checked={isItemSelected}
-                        onChange={(event) => handleCheckboxClick(event, row.id)}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell sx={{ pl: 1, color: '#94a3b8' }} style={{ width: 60 }}>{itemIndex}</TableCell>
-                    {activeColumns.map((column) => {
-                      const value = row[column.id];
-                      return (
-                        <TableCell
-                          key={column.id}
-                          align={column.align || 'left'}
-                          sx={column.cellSx}
-                          style={{
-                            width: column.width || 'auto',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}
-                        >
-                          {column.render ? column.render(row) : (value || '-')}
+                  <React.Fragment key={row.id}>
+                    <TableRow
+                      hover
+                      onClick={(event) => handleRowClick(event, row)}
+                      role="checkbox"
+                      aria-checked={isItemSelected}
+                      tabIndex={-1}
+                      selected={isItemSelected}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell padding="checkbox" sx={{ pl: 2 }} style={{ width: 50 }}>
+                        <Checkbox
+                          color="primary"
+                          checked={isItemSelected}
+                          onChange={(event) => handleCheckboxClick(event, row.id)}
+                          size="small"
+                        />
+                      </TableCell>
+                      {renderExpandedRow && (
+                        <TableCell sx={{ p: 0 }} align="center" style={{ width: 40 }}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRowExpand(row.id);
+                            }}
+                          >
+                            {isExpanded ? <KeyboardArrowDownIcon /> : <KeyboardArrowRightIcon />}
+                          </IconButton>
                         </TableCell>
-                      );
-                    })}
-                  </TableRow>
+                      )}
+                      <TableCell sx={{ pl: 1, color: '#94a3b8' }} style={{ width: 60 }}>{itemIndex}</TableCell>
+                      {activeColumns.map((column) => {
+                        const value = row[column.id];
+                        return (
+                          <TableCell
+                            key={column.id}
+                            align={column.align || 'left'}
+                            sx={column.cellSx}
+                            style={{
+                              width: column.width || 'auto',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {column.render ? column.render(row) : (value || '-')}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                    {renderExpandedRow && isExpanded && (
+                      <TableRow sx={{ bgcolor: '#f8fafc', '&:hover': { bgcolor: '#f8fafc !important' } }}>
+                        <TableCell colSpan={activeColumns.length + 3} sx={{ p: 0, borderBottom: '1px solid #e2e8f0' }}>
+                          <Box sx={{ py: 0.5, px: 3 }}>
+                            {renderExpandedRow(row)}
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 );
               })
             )}

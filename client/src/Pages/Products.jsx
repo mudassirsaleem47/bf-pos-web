@@ -19,7 +19,18 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Print as PrintIcon, Visibility as VisibilityIcon, Upload as UploadIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Print as PrintIcon,
+  Visibility as VisibilityIcon,
+  Upload as UploadIcon,
+  Inventory as InventoryIcon,
+  Warning as WarningIcon,
+  AttachMoney as MoneyIcon,
+  BarChart as BarChartIcon
+} from '@mui/icons-material';
 import DataTable from '../Components/DataTable';
 import Barcode from 'react-barcode';
 
@@ -202,7 +213,7 @@ const Products = () => {
     let inQuotes = false;
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
-      const next = text[i+1];
+      const next = text[i + 1];
       if (c === '"') {
         if (inQuotes && next === '"') {
           row[row.length - 1] += '"';
@@ -255,7 +266,7 @@ const Products = () => {
     const headers = ["Name", "Sell Price", "Barcode (Optional)", "Quantity (Optional)", "Unit (Optional)", "Low Stock Alert (Optional)", "Supplier Price (Optional)", "Model (Optional)", "Detail (Optional)", "Mfg Date (Optional)", "Exp Date (Optional)"];
     const example = ["Classic Cola 330ml", "75.00", "890103074090", "120", "pcs", "15", "55.00", "330ml Can", "Premium carbonated cola drink", "2026-01-01", "2026-12-31"];
     const csvContent = [headers.join(','), example.join(',')].join('\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -504,10 +515,10 @@ const Products = () => {
   };
 
   const columns = [
-    { id: 'name', label: 'Product Name', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
+    { id: 'name', label: 'Name', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
     {
       id: 'barcode',
-      label: 'Barcode / Sticker',
+      label: 'Barcode',
       sortable: true,
       render: (row) => (
         <Stack direction="row" spacing={1} alignItems="center">
@@ -586,6 +597,23 @@ const Products = () => {
     }
   ];
 
+  // Calculate statistics from the products state
+  const totalProducts = products.length;
+  const totalStock = products.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
+  const totalRetailValue = products.reduce((sum, p) => sum + ((Number(p.stock) || 0) * (Number(p.price) || 0)), 0);
+  const totalCostValue = products.reduce((sum, p) => sum + ((Number(p.stock) || 0) * (Number(p.supplierPrice) || 0)), 0);
+  const lowStockCount = products.filter(p => (Number(p.stock) || 0) <= (Number(p.lowStockAlert) || 5)).length;
+
+  const formatCurrency = (val) => {
+    const num = Number(val);
+    return isNaN(num) ? 'Rs. 0.00' : 'Rs. ' + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatNumber = (val) => {
+    const num = Number(val);
+    return isNaN(num) ? '0' : num.toLocaleString();
+  };
+
   return (
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
 
@@ -615,6 +643,176 @@ const Products = () => {
       </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
+
+      {/* Stats Cards Section */}
+      <Grid container spacing={3}>
+        {/* Card 1: Total Products */}
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+              color: '#ffffff',
+              borderRadius: '12px',
+              border: 'none',
+              position: 'relative',
+              overflow: 'hidden',
+              height: 115,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              pl: 3,
+              pr: 2,
+              boxShadow: '0 4px 20px 0 rgba(59, 130, 246, 0.15)',
+              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+              '&:hover': {
+                boxShadow: '0 8px 30px 0 rgba(59, 130, 246, 0.25)',
+              }
+            }}
+          >
+            <Typography variant="h4" sx={{ fontWeight: 800, fontSize: '1.85rem', lineHeight: 1.2 }}>
+              {formatNumber(totalProducts)}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.85)', mt: 0.5, letterSpacing: '0.75px', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+              Total Product Types
+            </Typography>
+            <InventoryIcon
+              sx={{
+                position: 'absolute',
+                bottom: -15,
+                right: -10,
+                fontSize: '6.5rem',
+                color: 'rgba(255, 255, 255, 0.08)'
+              }}
+            />
+          </Card>
+        </Grid>
+
+        {/* Card 2: Total Stock Qty */}
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)',
+              color: '#ffffff',
+              borderRadius: '12px',
+              border: 'none',
+              position: 'relative',
+              overflow: 'hidden',
+              height: 115,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              pl: 3,
+              pr: 2,
+              boxShadow: '0 4px 20px 0 rgba(20, 184, 166, 0.15)',
+              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+              '&:hover': {
+                boxShadow: '0 8px 30px 0 rgba(20, 184, 166, 0.25)',
+              }
+            }}
+          >
+            <Typography variant="h4" sx={{ fontWeight: 800, fontSize: '1.85rem', lineHeight: 1.2 }}>
+              {formatNumber(totalStock)}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.85)', mt: 0.5, letterSpacing: '0.75px', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+              Total Items in Stock
+            </Typography>
+            <BarChartIcon
+              sx={{
+                position: 'absolute',
+                bottom: -15,
+                right: -10,
+                fontSize: '6.5rem',
+                color: 'rgba(255, 255, 255, 0.08)'
+              }}
+            />
+          </Card>
+        </Grid>
+
+        {/* Card 3: Stock Value */}
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #15803d 0%, #22c55e 100%)',
+              color: '#ffffff',
+              borderRadius: '12px',
+              border: 'none',
+              position: 'relative',
+              overflow: 'hidden',
+              height: 115,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              pl: 3,
+              pr: 2,
+              boxShadow: '0 4px 20px 0 rgba(34, 197, 94, 0.15)',
+              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+              '&:hover': {
+                boxShadow: '0 8px 30px 0 rgba(34, 197, 94, 0.25)',
+              }
+            }}
+          >
+            <Typography variant="h4" sx={{ fontWeight: 800, fontSize: '1.5rem', lineHeight: 1.2 }}>
+              {formatCurrency(totalRetailValue)}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.95)', mt: 0.5, letterSpacing: '0.75px', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+              Stock Value (Retail)
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.75)', mt: 0.25, fontSize: '0.68rem' }}>
+              Cost: {formatCurrency(totalCostValue)}
+            </Typography>
+            <MoneyIcon
+              sx={{
+                position: 'absolute',
+                bottom: -15,
+                right: -10,
+                fontSize: '6.5rem',
+                color: 'rgba(255, 255, 255, 0.08)'
+              }}
+            />
+          </Card>
+        </Grid>
+
+        {/* Card 4: Low Stock */}
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #be123c 0%, #f43f5e 100%)',
+              color: '#ffffff',
+              borderRadius: '12px',
+              border: 'none',
+              position: 'relative',
+              overflow: 'hidden',
+              height: 115,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              pl: 3,
+              pr: 2,
+              boxShadow: '0 4px 20px 0 rgba(244, 63, 94, 0.15)',
+              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+              '&:hover': {
+                boxShadow: '0 8px 30px 0 rgba(244, 63, 94, 0.25)',
+              }
+            }}
+          >
+            <Typography variant="h4" sx={{ fontWeight: 800, fontSize: '1.85rem', lineHeight: 1.2 }}>
+              {formatNumber(lowStockCount)}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.85)', mt: 0.5, letterSpacing: '0.75px', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+              Low Stock Items
+            </Typography>
+            <WarningIcon
+              sx={{
+                position: 'absolute',
+                bottom: -15,
+                right: -10,
+                fontSize: '6.5rem',
+                color: 'rgba(255, 255, 255, 0.08)'
+              }}
+            />
+          </Card>
+        </Grid>
+      </Grid>
 
       {/* Content */}
       <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
@@ -718,7 +916,7 @@ const Products = () => {
 
             {/* Barcode SVG Container */}
             <Box sx={{ width: '100%', height: '55px', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-              <Barcode 
+              <Barcode
                 value={barcodeToPrint}
                 format="CODE128"
                 width={1.2}
@@ -803,7 +1001,7 @@ const Products = () => {
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     Sticker Preview (50x30mm)
                   </Typography>
-                  
+
                   {/* Miniature Sticker Preview */}
                   <Box
                     sx={{
@@ -843,7 +1041,7 @@ const Products = () => {
 
                     {/* Barcode SVG Container */}
                     <Box sx={{ width: '100%', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                      <Barcode 
+                      <Barcode
                         value={viewProduct.barcode}
                         format="CODE128"
                         width={1.0}

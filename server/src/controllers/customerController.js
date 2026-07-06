@@ -5,7 +5,13 @@ const prisma = require('../../lib/prisma');
 const getCustomers = async (req, res) => {
   try {
     const customers = await prisma.customer.findMany({
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
+      include: {
+        sales: {
+          orderBy: { createdAt: 'desc' },
+          include: { items: true }
+        }
+      }
     });
     return res.status(200).json(customers);
   } catch (error) {
@@ -18,7 +24,7 @@ const getCustomers = async (req, res) => {
 // @route POST /api/customers
 const createCustomer = async (req, res) => {
   try {
-    const { name, phone, email, address, loyaltyPoints } = req.body;
+    const { name, phone, email, address, loyaltyPoints, balance } = req.body;
     if (!name) {
       return res.status(400).json({ message: 'Name is required' });
     }
@@ -29,7 +35,14 @@ const createCustomer = async (req, res) => {
         phone: phone || null,
         email: email || null,
         address: address || null,
-        loyaltyPoints: parseInt(loyaltyPoints) || 0
+        loyaltyPoints: parseInt(loyaltyPoints) || 0,
+        balance: parseFloat(balance) || 0
+      },
+      include: {
+        sales: {
+          orderBy: { createdAt: 'desc' },
+          include: { items: true }
+        }
       }
     });
 
@@ -45,7 +58,7 @@ const createCustomer = async (req, res) => {
 const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, email, address, loyaltyPoints } = req.body;
+    const { name, phone, email, address, loyaltyPoints, balance } = req.body;
 
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) {
@@ -59,7 +72,14 @@ const updateCustomer = async (req, res) => {
         phone: phone !== undefined ? phone : existing.phone,
         email: email !== undefined ? email : existing.email,
         address: address !== undefined ? address : existing.address,
-        loyaltyPoints: loyaltyPoints !== undefined ? parseInt(loyaltyPoints) : existing.loyaltyPoints
+        loyaltyPoints: loyaltyPoints !== undefined ? parseInt(loyaltyPoints) : existing.loyaltyPoints,
+        balance: balance !== undefined ? parseFloat(balance) : existing.balance
+      },
+      include: {
+        sales: {
+          orderBy: { createdAt: 'desc' },
+          include: { items: true }
+        }
       }
     });
 

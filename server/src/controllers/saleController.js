@@ -12,7 +12,7 @@ const getSales = async (req, res) => {
   try {
     const sales = await prisma.saleTransaction.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { items: true }
+      include: { items: true, customer: true }
     });
     return res.status(200).json(sales);
   } catch (error) {
@@ -25,7 +25,7 @@ const getSales = async (req, res) => {
 // @route POST /api/sales
 const createSale = async (req, res) => {
   try {
-    const { items, totalAmount, paidAmount, discount, tax } = req.body;
+    const { items, totalAmount, paidAmount, discount, tax, customerId } = req.body;
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Items are required' });
     }
@@ -35,6 +35,12 @@ const createSale = async (req, res) => {
     const paid = parseFloat(paidAmount) || 0;
     const change = paid - total > 0 ? paid - total : 0;
 
+    // Credit sale validation: requires a customer
+    if (paid < total && !customerId) {
+      return res.status(400).json({ message: 'Customer is required for credit transactions.' });
+    }
+
+    // 1. Create Sale Transaction
     const sale = await prisma.saleTransaction.create({
       data: {
         receiptNo,
@@ -43,6 +49,7 @@ const createSale = async (req, res) => {
         change,
         discount: parseFloat(discount) || 0,
         tax: parseFloat(tax) || 0,
+        customerId: customerId || null,
         items: {
           create: items.map(item => ({
             productId: item.productId || null,
@@ -54,8 +61,35 @@ const createSale = async (req, res) => {
           }))
         }
       },
-      include: { items: true }
+      include: { items: true, customer: true }
     });
+
+    // 2. Adjust Product Stock
+    for (const item of items) {
+      if (item.productId) {
+        await prisma.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: {
+              decrement: parseFloat(item.quantity)
+            }
+          }
+        });
+      }
+    }
+
+    // 3. Update Customer balance if it is a credit sale
+    if (customerId && total > paid) {
+      const creditAmount = total - paid;
+      await prisma.customer.update({
+        where: { id: customerId },
+        data: {
+          balance: {
+            increment: creditAmount
+          }
+        }
+      });
+    }
 
     return res.status(201).json(sale);
   } catch (error) {
