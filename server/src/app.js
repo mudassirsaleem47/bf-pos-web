@@ -15,7 +15,6 @@ const expenseRoutes = require('./routes/expenseRoutes');
 const loanRoutes = require('./routes/loanRoutes');
 const staffRoutes = require('./routes/staffRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
-const syncRoutes = require('./routes/syncRoutes');
 
 
 const app = express();
@@ -45,7 +44,6 @@ app.use('/api/expenses', protect, expenseRoutes);
 app.use('/api/loans', protect, loanRoutes);
 app.use('/api/staff', protect, staffRoutes);
 app.use('/api/dashboard', protect, dashboardRoutes);
-app.use('/api/sync', syncRoutes);
 
 
 // Health check route
