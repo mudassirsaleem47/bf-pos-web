@@ -4,46 +4,47 @@ const { logSync, getSyncing } = require('../src/utils/syncHelper');
 
 const globalForPrisma = global;
 
-const prisma = globalForPrisma.prisma || new PrismaClient();
+const basePrisma = globalForPrisma.prisma || new PrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+  globalForPrisma.prisma = basePrisma;
 }
 
-// Add middleware to log syncs automatically on all write queries
-prisma.$use(async (params, next) => {
-  const result = await next(params);
+const prisma = basePrisma.$extends({
+  query: {
+    $allModels: {
+      async $allOperations({ model, operation, args, query }) {
+        const result = await query(args);
 
-  // If we are currently in the middle of a sync pull, do not log
-  if (getSyncing()) return result;
+        if (getSyncing()) return result;
 
-  const store = asyncLocalStorage.getStore();
-  const userId = store ? store.userId : null;
+        const store = asyncLocalStorage.getStore();
+        const userId = store ? store.userId : null;
 
-  const writeActions = ['create', 'update', 'delete', 'deleteMany', 'updateMany', 'createMany'];
-  if (writeActions.includes(params.action) && userId) {
-    const model = params.model;
-    const action = params.action;
-
-    if (action === 'create' || action === 'update') {
-      if (result && result.id) {
-        logSync(model, result.id, action === 'create' ? 'create' : 'update', userId);
-      }
-    } else if (action === 'delete') {
-      if (result && result.id) {
-        logSync(model, result.id, 'delete', userId);
-      }
-    } else if (action === 'deleteMany') {
-      const ids = params.args && params.args.where && params.args.where.id && params.args.where.id.in;
-      if (ids && Array.isArray(ids)) {
-        for (const id of ids) {
-          logSync(model, id, 'delete', userId);
+        const writeActions = ['create', 'update', 'delete', 'deleteMany', 'updateMany', 'createMany'];
+        if (writeActions.includes(operation) && userId) {
+          if (operation === 'create' || operation === 'update') {
+            if (result && result.id) {
+              logSync(model, result.id, operation === 'create' ? 'create' : 'update', userId);
+            }
+          } else if (operation === 'delete') {
+            if (result && result.id) {
+              logSync(model, result.id, 'delete', userId);
+            }
+          } else if (operation === 'deleteMany') {
+            const ids = args && args.where && args.where.id && args.where.id.in;
+            if (ids && Array.isArray(ids)) {
+              for (const id of ids) {
+                logSync(model, id, 'delete', userId);
+              }
+            }
+          }
         }
+
+        return result;
       }
     }
   }
-
-  return result;
 });
 
 module.exports = prisma;

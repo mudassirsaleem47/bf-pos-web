@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   Box,
   Typography,
@@ -614,6 +616,60 @@ const Products = () => {
     return isNaN(num) ? '0' : num.toLocaleString();
   };
 
+  const handleDownloadPDF = () => {
+    try {
+      const doc = new jsPDF();
+
+      // Add Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.text('BF MakeUp POS - Inventory Report', 14, 20);
+
+      // Add Date/Time
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
+
+      // Add summary stats
+      doc.text(`Total Products: ${products.length}   |   Total Stock Qty: ${totalStock}   |   Total Retail Value: Rs. ${totalRetailValue.toFixed(2)}`, 14, 34);
+
+      // Prepare Table Data
+      const tableColumn = ["#", "Name", "Barcode", "Price", "Stock", "Unit", "Category", "Expiry Date"];
+      const tableRows = [];
+
+      products.forEach((prod, index) => {
+        const prodData = [
+          index + 1,
+          prod.name,
+          prod.barcode || '-',
+          `Rs. ${parseFloat(prod.price || 0).toFixed(2)}`,
+          prod.stock || 0,
+          prod.unit || 'pcs',
+          prod.category?.name || '-',
+          prod.expiryDate ? new Date(prod.expiryDate).toLocaleDateString() : '-'
+        ];
+        tableRows.push(prodData);
+      });
+
+      // Generate Table
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 40,
+        theme: 'striped',
+        headStyles: { fillColor: [15, 118, 110] }, // teal
+        styles: { fontSize: 9, cellPadding: 2 }
+      });
+
+      // Save PDF
+      doc.save(`Inventory_Report_${new Date().toISOString().slice(0,10)}.pdf`);
+    } catch (err) {
+      console.error('Failed to generate PDF:', err);
+      alert('Error generating PDF report.');
+    }
+  };
+
   return (
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
 
@@ -623,6 +679,15 @@ const Products = () => {
           Products
         </Typography>
         <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<PrintIcon />}
+            onClick={handleDownloadPDF}
+            sx={{ borderRadius: 2, px: 3 }}
+          >
+            Inventory Report
+          </Button>
           <Button
             variant="outlined"
             startIcon={<UploadIcon />}

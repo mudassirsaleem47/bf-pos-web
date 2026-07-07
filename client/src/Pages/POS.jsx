@@ -349,7 +349,6 @@ const POS = () => {
     fetchSettings();
     fetchProducts();
     fetchCustomers();
-    focusProductField();
 
     // Auto-connect to WebUSB printer if previously connected
     if (localStorage.getItem('usb_printer_connected') === 'true') {
@@ -374,19 +373,192 @@ const POS = () => {
 
   const handlePrintReceipt = async (saleToPrint = lastSale) => {
     if (!saleToPrint) return;
+
+    /*
+    // --- THERMAL USB PRINTING CODE (SAVED FOR LATER USE) ---
     if (printMethod === 'usb') {
       try {
         setError('');
         await usbPrinter.printReceipt(saleToPrint, settings, paperSize, printBarcode);
         setSuccessMsg('Receipt printed successfully via USB!');
+        return;
       } catch (err) {
         console.error(err);
         setError('Direct USB printing failed: ' + err.message + '. Falling back to Browser Print.');
-        window.print();
       }
-    } else {
-      window.print();
     }
+    // -------------------------------------------------------
+    */
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (!printWindow) {
+      alert("Please allow popups to print receipts.");
+      return;
+    }
+
+    const itemsHtml = (saleToPrint.items || cart).map((item, idx) => `
+      <div style="margin: 6px 0; font-family: 'Inter', sans-serif; font-size: 13px;">
+        <div style="font-weight: bold; display: flex; justify-content: space-between;">
+          <span>${item.name}</span>
+          <span>${settings.currency}${parseFloat(item.total).toFixed(2)}</span>
+        </div>
+        <div style="color: #555; font-size: 12px; margin-top: 2px;">
+          ${item.qty || item.quantity} x ${settings.currency}${parseFloat(item.price).toFixed(2)}
+        </div>
+      </div>
+    `).join('');
+
+    const subtotalVal = saleToPrint ? (saleToPrint.totalAmount + saleToPrint.discount) : (subtotal);
+    const discountVal = saleToPrint ? saleToPrint.discount : finalDiscount;
+    const totalVal = saleToPrint ? saleToPrint.totalAmount : total;
+    const paidVal = saleToPrint ? saleToPrint.paidAmount : paid;
+    const changeVal = saleToPrint ? saleToPrint.change : change;
+    const remainingDue = totalVal - paidVal;
+
+    const htmlContent = `
+      <html>
+        <head>
+          <title>POS Receipt - ${saleToPrint.receiptNo || 'Draft'}</title>
+          <style>
+            @media print {
+              @page {
+                size: auto;
+                margin: 5mm;
+              }
+              body {
+                margin: 0;
+              }
+            }
+            body {
+              font-family: 'Inter', -apple-system, sans-serif;
+              color: #000;
+              padding: 10px;
+              width: 100%;
+              max-width: 80mm;
+              box-sizing: border-box;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 12px;
+            }
+            .logo {
+              max-width: 120px;
+              height: auto;
+              margin-bottom: 6px;
+              object-fit: contain;
+            }
+            .title {
+              font-size: 16px;
+              font-weight: bold;
+              margin: 2px 0;
+            }
+            .info {
+              font-size: 12px;
+              color: #444;
+              margin: 2px 0;
+            }
+            .divider {
+              border-bottom: 1px dashed #000;
+              margin: 10px 0;
+            }
+            .flex-row {
+              display: flex;
+              justify-content: space-between;
+              font-size: 13px;
+              margin: 4px 0;
+            }
+            .flex-row-bold {
+              display: flex;
+              justify-content: space-between;
+              font-size: 14px;
+              font-weight: bold;
+              margin: 6px 0;
+            }
+            .footer {
+              text-align: center;
+              font-size: 12px;
+              margin-top: 15px;
+              color: #555;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <img src="/bglogo.png" class="logo" alt="Store Logo" />
+            <div class="title">${settings.storeName.toUpperCase()}</div>
+            ${settings.address ? `<div class="info">${settings.address}</div>` : ''}
+            ${settings.phone ? `<div class="info">Tel: ${settings.phone}</div>` : ''}
+          </div>
+          
+          <div class="divider"></div>
+          
+          <div class="flex-row">
+            <span>Date:</span>
+            <span>${new Date(saleToPrint.createdAt || new Date()).toLocaleString()}</span>
+          </div>
+          <div class="flex-row">
+            <span>Receipt No:</span>
+            <span style="font-weight: bold;">${saleToPrint.receiptNo || 'R-XXXX'}</span>
+          </div>
+          ${saleToPrint.customer ? `
+          <div class="flex-row">
+            <span>Customer:</span>
+            <span>${saleToPrint.customer.name}</span>
+          </div>` : ''}
+          
+          <div class="divider"></div>
+          
+          <div style="margin: 10px 0;">
+            ${itemsHtml}
+          </div>
+          
+          <div class="divider"></div>
+          
+          <div class="flex-row">
+            <span>Subtotal:</span>
+            <span>${settings.currency}${subtotalVal.toFixed(2)}</span>
+          </div>
+          ${discountVal > 0 ? `
+          <div class="flex-row">
+            <span>Discount:</span>
+            <span>-${settings.currency}${discountVal.toFixed(2)}</span>
+          </div>` : ''}
+          <div class="flex-row-bold">
+            <span>Total:</span>
+            <span>${settings.currency}${totalVal.toFixed(2)}</span>
+          </div>
+          <div class="flex-row">
+            <span>Paid:</span>
+            <span>${settings.currency}${paidVal.toFixed(2)}</span>
+          </div>
+          ${remainingDue > 0 ? `
+          <div class="flex-row-bold">
+            <span>Remaining Due (Credit):</span>
+            <span>${settings.currency}${remainingDue.toFixed(2)}</span>
+          </div>` : `
+          <div class="flex-row">
+            <span>Change Return:</span>
+            <span>${settings.currency}${changeVal.toFixed(2)}</span>
+          </div>`}
+          
+          <div class="divider"></div>
+          
+          <div class="footer">
+            <p>${settings.receiptFooter}</p>
+          </div>
+          
+          <script>
+            window.onload = function() {
+              window.print();
+              window.close();
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   };
 
   // Auto-print receipt when checkout completes
@@ -398,6 +570,64 @@ const POS = () => {
       return () => clearTimeout(timer);
     }
   }, [lastSale, autoPrint, printMethod, paperSize, printBarcode]);
+
+  // Global barcode scanner listener (intercepts barcode inputs when no input is focused)
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleGlobalKeyDown = (event) => {
+      const activeEl = document.activeElement;
+      const tagName = activeEl.tagName.toLowerCase();
+
+      // If user is focused on an input, select, or textarea, don't capture input (they are typing manually)
+      if (
+        tagName === 'input' || 
+        tagName === 'textarea' || 
+        tagName === 'select' || 
+        activeEl.closest('.MuiAutocomplete-popper') || 
+        activeEl.closest('.MuiDialog-root') || 
+        activeEl.closest('.MuiMenu-root')
+      ) {
+        return;
+      }
+
+      const currentTime = Date.now();
+      
+      // Reset buffer if the time difference between keypresses is too long (indicating slow human typing)
+      if (currentTime - lastKeyTime > 100) {
+        buffer = '';
+      }
+      
+      lastKeyTime = currentTime;
+
+      // Check if key is Enter (signaling end of barcode scan)
+      if (event.key === 'Enter') {
+        if (buffer.length > 2) {
+          const barcode = buffer.trim();
+          const matched = products.find(p => p.barcode && p.barcode.toLowerCase() === barcode.toLowerCase());
+          if (matched) {
+            addToCart(matched, 1);
+            setSuccessMsg(`Scanned: ${matched.name}`);
+            setTimeout(() => setSuccessMsg(''), 2000);
+          } else {
+            setError(`Barcode not found: ${barcode}`);
+            setTimeout(() => setError(''), 3000);
+          }
+        }
+        buffer = '';
+        event.preventDefault();
+      } else if (event.key.length === 1) {
+        // Only append single characters (ignore Shift, Control, etc.)
+        buffer += event.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [products]);
 
 
 
@@ -428,7 +658,6 @@ const POS = () => {
         ];
       }
     });
-    focusProductField();
   };
 
   const handleAddItemToCart = (e) => {
@@ -443,9 +672,6 @@ const POS = () => {
     setSelectedProduct(null);
     setProductInputValue('');
     setQuantity(1);
-
-    // Refocus the Autocomplete input field
-    focusProductField();
   };
 
   const handleQtyChange = (id, newQty) => {
@@ -474,7 +700,6 @@ const POS = () => {
 
   const handleRemoveItem = (id) => {
     setCart((prevCart) => prevCart.filter((item) => item.id !== id));
-    focusProductField();
   };
 
   const handleClearCart = () => {
@@ -487,7 +712,6 @@ const POS = () => {
     setLastSale(null);
     setSelectedCustomer(null);
     setError('');
-    focusProductField();
   };
 
   // Calculations
@@ -555,7 +779,6 @@ const POS = () => {
       setCash('');
       setDiscountPercent(0);
       setSelectedCustomer(null);
-      focusProductField();
     } catch (err) {
       setError(err.message || 'Failed to process checkout');
     } finally {
@@ -734,7 +957,6 @@ const POS = () => {
                       label="Select Product" 
                       size="small" 
                       placeholder="Type product name or scan barcode..." 
-                      autoFocus
                     />
                   )}
                   sx={{ flexGrow: 2, width: '100%' }}

@@ -1,5 +1,3 @@
-const prisma = require('../../lib/prisma');
-
 // Global flag to prevent logging sync operations
 let isSyncing = false;
 
@@ -9,6 +7,7 @@ const setSyncing = (val) => {
 
 const logSync = async (modelName, recordId, action, userId = null) => {
   if (isSyncing) return;
+  const prisma = require('../../lib/prisma');
   try {
     if (action === 'delete') {
       const existingCreate = await prisma.syncLog.findFirst({
