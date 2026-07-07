@@ -7,6 +7,7 @@ const fs = require('fs');
 const getProducts = async (req, res) => {
   try {
     const products = await prisma.product.findMany({
+      where: { userId: req.user.id },
       orderBy: { createdAt: 'desc' },
       include: { category: { select: { id: true, name: true } } }
     });
@@ -22,8 +23,8 @@ const getProducts = async (req, res) => {
 const getProductByBarcode = async (req, res) => {
   try {
     const { barcode } = req.params;
-    const product = await prisma.product.findUnique({
-      where: { barcode },
+    const product = await prisma.product.findFirst({
+      where: { barcode, userId: req.user.id },
       include: { category: { select: { name: true } } }
     });
     if (!product) return res.status(404).json({ message: 'Product not found for this barcode' });
@@ -80,6 +81,7 @@ const createProduct = async (req, res) => {
         supplierPrice: supplierPrice ? parseFloat(supplierPrice) : 0,
         model: model || null,
         supplierId: supplierId || null,
+        userId: req.user.id
       },
       include: {
         category: { select: { id: true, name: true } },
@@ -118,7 +120,9 @@ const updateProduct = async (req, res) => {
       supplierId
     } = req.body;
 
-    const existing = await prisma.product.findUnique({ where: { id } });
+    const existing = await prisma.product.findFirst({
+      where: { id, userId: req.user.id }
+    });
     if (!existing) return res.status(404).json({ message: 'Product not found' });
 
     let imagePath = existing.imagePath;
@@ -174,9 +178,9 @@ const deleteProducts = async (req, res) => {
       return res.status(400).json({ message: 'Product IDs are required' });
     }
 
-    // Find products to delete their images
+    // Find products to delete their images, scoped to user
     const products = await prisma.product.findMany({
-      where: { id: { in: ids } }
+      where: { id: { in: ids }, userId: req.user.id }
     });
 
     products.forEach(p => {
@@ -188,7 +192,9 @@ const deleteProducts = async (req, res) => {
       }
     });
 
-    await prisma.product.deleteMany({ where: { id: { in: ids } } });
+    await prisma.product.deleteMany({
+      where: { id: { in: ids }, userId: req.user.id }
+    });
     return res.status(200).json({ message: 'Products deleted successfully' });
   } catch (error) {
     console.error('Delete products error:', error);
@@ -201,8 +207,8 @@ const deleteProducts = async (req, res) => {
 const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
-    const product = await prisma.product.findUnique({
-      where: { id },
+    const product = await prisma.product.findFirst({
+      where: { id, userId: req.user.id },
       include: {
         category: { select: { id: true, name: true } },
         warehouse: { select: { id: true, name: true } },
@@ -239,7 +245,6 @@ const importProducts = async (req, res) => {
           continue;
         }
 
-        // Sell Price is required
         const priceVal = parseFloat(item.price);
         if (isNaN(priceVal)) {
           skippedCount++;
@@ -247,7 +252,7 @@ const importProducts = async (req, res) => {
           continue;
         }
 
-        // Handle barcode
+        // Handle barcode scoped to user
         let barcodeVal = item.barcode ? String(item.barcode).trim() : '';
         if (!barcodeVal) {
           // Auto-generate barcode
@@ -256,14 +261,18 @@ const importProducts = async (req, res) => {
           let limit = 0;
           while (!isUnique && limit < 10) {
             generated = '890' + Math.floor(100000000 + Math.random() * 900000000);
-            const check = await prisma.product.findUnique({ where: { barcode: generated } });
+            const check = await prisma.product.findFirst({
+              where: { barcode: generated, userId: req.user.id }
+            });
             if (!check) isUnique = true;
             limit++;
           }
           barcodeVal = generated;
         } else {
-          // Check uniqueness of provided barcode
-          const check = await prisma.product.findUnique({ where: { barcode: barcodeVal } });
+          // Check uniqueness of provided barcode scoped to user
+          const check = await prisma.product.findFirst({
+            where: { barcode: barcodeVal, userId: req.user.id }
+          });
           if (check) {
             skippedCount++;
             errors.push(`Row ${i + 1} (${item.name}): Barcode ${barcodeVal} already exists`);
@@ -286,6 +295,7 @@ const importProducts = async (req, res) => {
             lowStockAlert: item.lowStockAlert ? parseFloat(item.lowStockAlert) : 5,
             supplierPrice: item.supplierPrice ? parseFloat(item.supplierPrice) : 0,
             model: item.model ? String(item.model).trim() : null,
+            userId: req.user.id
           }
         });
         successCount++;

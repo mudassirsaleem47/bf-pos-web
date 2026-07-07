@@ -6,6 +6,7 @@ const prisma = require('../../lib/prisma');
 const getCategories = async (req, res) => {
   try {
     const categories = await prisma.category.findMany({
+      where: { userId: req.user.id },
       orderBy: { createdAt: 'desc' }
     });
     return res.status(200).json(categories);
@@ -29,7 +30,8 @@ const createCategory = async (req, res) => {
     const newCategory = await prisma.category.create({
       data: {
         name,
-        description: description || null
+        description: description || null,
+        userId: req.user.id
       }
     });
 
@@ -55,7 +57,9 @@ const updateCategory = async (req, res) => {
       return res.status(400).json({ message: 'Category name is required' });
     }
 
-    const existing = await prisma.category.findUnique({ where: { id } });
+    const existing = await prisma.category.findFirst({
+      where: { id, userId: req.user.id }
+    });
     if (!existing) {
       return res.status(404).json({ message: 'Category not found' });
     }
@@ -87,7 +91,10 @@ const deleteCategories = async (req, res) => {
     }
 
     await prisma.category.deleteMany({
-      where: { id: { in: ids } }
+      where: {
+        id: { in: ids },
+        userId: req.user.id
+      }
     });
 
     return res.status(200).json({ message: 'Categories deleted successfully' });

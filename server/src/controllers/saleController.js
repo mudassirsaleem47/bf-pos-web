@@ -1,8 +1,10 @@
 const prisma = require('../../lib/prisma');
 
-// Generate receipt number
-const generateReceiptNo = async () => {
-  const count = await prisma.saleTransaction.count();
+// Generate receipt number scoped to the user
+const generateReceiptNo = async (userId) => {
+  const count = await prisma.saleTransaction.count({
+    where: { userId }
+  });
   return `R-${String(count + 1).padStart(4, '0')}`;
 };
 
@@ -11,6 +13,7 @@ const generateReceiptNo = async () => {
 const getSales = async (req, res) => {
   try {
     const sales = await prisma.saleTransaction.findMany({
+      where: { userId: req.user.id },
       orderBy: { createdAt: 'desc' },
       include: { items: true, customer: true }
     });
@@ -30,7 +33,7 @@ const createSale = async (req, res) => {
       return res.status(400).json({ message: 'Items are required' });
     }
 
-    const receiptNo = await generateReceiptNo();
+    const receiptNo = await generateReceiptNo(req.user.id);
     const total = parseFloat(totalAmount) || 0;
     const paid = parseFloat(paidAmount) || 0;
     const change = paid - total > 0 ? paid - total : 0;
@@ -38,6 +41,28 @@ const createSale = async (req, res) => {
     // Credit sale validation: requires a customer
     if (paid < total && !customerId) {
       return res.status(400).json({ message: 'Customer is required for credit transactions.' });
+    }
+
+    // Verify products belong to user and adjust stock
+    for (const item of items) {
+      if (item.productId) {
+        const prod = await prisma.product.findFirst({
+          where: { id: item.productId, userId: req.user.id }
+        });
+        if (!prod) {
+          return res.status(400).json({ message: `Product not found or unauthorized: ${item.name}` });
+        }
+      }
+    }
+
+    // Verify customer belongs to user if provided
+    if (customerId) {
+      const cust = await prisma.customer.findFirst({
+        where: { id: customerId, userId: req.user.id }
+      });
+      if (!cust) {
+        return res.status(400).json({ message: 'Customer not found or unauthorized.' });
+      }
     }
 
     // 1. Create Sale Transaction
@@ -50,6 +75,7 @@ const createSale = async (req, res) => {
         discount: parseFloat(discount) || 0,
         tax: parseFloat(tax) || 0,
         customerId: customerId || null,
+        userId: req.user.id,
         items: {
           create: items.map(item => ({
             productId: item.productId || null,
@@ -106,7 +132,12 @@ const deleteSales = async (req, res) => {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ message: 'Sale IDs are required' });
     }
-    await prisma.saleTransaction.deleteMany({ where: { id: { in: ids } } });
+    await prisma.saleTransaction.deleteMany({
+      where: {
+        id: { in: ids },
+        userId: req.user.id
+      }
+    });
     return res.status(200).json({ message: 'Sales deleted successfully' });
   } catch (error) {
     console.error('Delete sales error:', error);

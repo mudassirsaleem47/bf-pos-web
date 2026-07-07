@@ -50,6 +50,7 @@ const POS = () => {
   const [cart, setCart] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [productInputValue, setProductInputValue] = useState('');
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [discountPercent, setDiscountPercent] = useState(0);
   const [cash, setCash] = useState('');
@@ -683,6 +684,14 @@ const POS = () => {
                   options={products}
                   getOptionLabel={(option) => `${option.name} (${settings.currency}${parseFloat(option.price).toFixed(2)})`}
                   value={selectedProduct}
+                  open={productDropdownOpen}
+                  onOpen={(event) => {
+                    // Only open if arrow indicator is clicked
+                    if (event && event.target && event.target.closest('.MuiAutocomplete-popupIndicator')) {
+                      setProductDropdownOpen(true);
+                    }
+                  }}
+                  onClose={() => setProductDropdownOpen(false)}
                   onChange={(event, newValue) => {
                     setSelectedProduct(newValue);
                     if (newValue) {
@@ -705,6 +714,7 @@ const POS = () => {
                         addToCart(matched, 1);
                         setSelectedProduct(null);
                         setProductInputValue('');
+                        setProductDropdownOpen(false);
                         return; // Done
                       }
                     }

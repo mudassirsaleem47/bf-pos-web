@@ -5,6 +5,7 @@ const prisma = require('../../lib/prisma');
 const getStaff = async (req, res) => {
   try {
     const staff = await prisma.staff.findMany({
+      where: { userId: req.user.id },
       orderBy: { name: 'asc' }
     });
     return res.status(200).json(staff);
@@ -31,7 +32,8 @@ const createStaff = async (req, res) => {
         role,
         salary: parseFloat(salary) || 0,
         dateHired: dateHired ? new Date(dateHired) : new Date(),
-        status: status || 'Active'
+        status: status || 'Active',
+        userId: req.user.id
       }
     });
 
@@ -49,7 +51,9 @@ const updateStaff = async (req, res) => {
     const { id } = req.params;
     const { name, email, phone, role, salary, dateHired, status } = req.body;
 
-    const existing = await prisma.staff.findUnique({ where: { id } });
+    const existing = await prisma.staff.findFirst({
+      where: { id, userId: req.user.id }
+    });
     if (!existing) {
       return res.status(404).json({ message: 'Staff profile not found' });
     }
@@ -84,7 +88,7 @@ const deleteStaff = async (req, res) => {
     }
 
     await prisma.staff.deleteMany({
-      where: { id: { in: ids } }
+      where: { id: { in: ids }, userId: req.user.id }
     });
 
     return res.status(200).json({ message: 'Staff profile(s) deleted successfully' });

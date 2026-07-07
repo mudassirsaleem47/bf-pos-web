@@ -6,9 +6,9 @@ const fs = require('fs');
 // @route GET /api/settings
 const getSettings = async (req, res) => {
   try {
-    let settings = await prisma.setting.findUnique({ where: { id: 'default' } });
+    let settings = await prisma.setting.findUnique({ where: { userId: req.user.id } });
     if (!settings) {
-      settings = await prisma.setting.create({ data: { id: 'default' } });
+      settings = await prisma.setting.create({ data: { userId: req.user.id } });
     }
     return res.status(200).json(settings);
   } catch (error) {
@@ -25,7 +25,7 @@ const updateSettings = async (req, res) => {
 
     let logoPath = undefined;
     if (req.file) {
-      const existing = await prisma.setting.findUnique({ where: { id: 'default' } });
+      const existing = await prisma.setting.findUnique({ where: { userId: req.user.id } });
       if (existing?.logoPath) {
         const oldPath = path.join(__dirname, '../../', existing.logoPath);
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
@@ -45,8 +45,8 @@ const updateSettings = async (req, res) => {
     if (logoPath !== undefined) updateData.logoPath = logoPath;
 
     const settings = await prisma.setting.upsert({
-      where: { id: 'default' },
-      create: { id: 'default', storeName: storeName || 'My Store', ...updateData },
+      where: { userId: req.user.id },
+      create: { userId: req.user.id, storeName: storeName || 'My Store', ...updateData },
       update: updateData,
     });
 
@@ -61,20 +61,44 @@ const updateSettings = async (req, res) => {
 // @route DELETE /api/settings/clear-data
 const clearData = async (req, res) => {
   try {
-    // Delete in dependency order to prevent foreign key violations
+    // Delete in dependency order to prevent foreign key violations, scoped to the user
     await prisma.$transaction([
-      prisma.saleItem.deleteMany(),
-      prisma.saleTransaction.deleteMany(),
-      prisma.supplierInvoiceItem.deleteMany(),
-      prisma.supplierInvoice.deleteMany(),
-      prisma.product.deleteMany(),
-      prisma.category.deleteMany(),
-      prisma.supplier.deleteMany(),
-      prisma.customer.deleteMany(),
-      prisma.expense.deleteMany(),
-      prisma.loan.deleteMany(),
-      prisma.staff.deleteMany(),
-      prisma.warehouse.deleteMany(),
+      prisma.saleItem.deleteMany({
+        where: { sale: { userId: req.user.id } }
+      }),
+      prisma.saleTransaction.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.supplierInvoiceItem.deleteMany({
+        where: { invoice: { userId: req.user.id } }
+      }),
+      prisma.supplierInvoice.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.product.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.category.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.supplier.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.customer.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.expense.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.loan.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.staff.deleteMany({
+        where: { userId: req.user.id }
+      }),
+      prisma.warehouse.deleteMany({
+        where: { userId: req.user.id }
+      }),
     ]);
 
     return res.status(200).json({ message: 'All store data cleared successfully' });

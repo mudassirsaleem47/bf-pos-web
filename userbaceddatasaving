@@ -1,0 +1,82 @@
+# User-Scoped Multi-Tenant Data Isolation
+
+This plan outlines the steps required to isolate data on a per-user basis. All transactional and master data (Products, Categories, Warehouses, Suppliers, Customers, Sales, Expenses, Loans, Staff, and Settings) will be scoped to the logged-in user. When a user logs in, they will only see and modify their own data.
+
+## User Review Required
+
+> [!WARNING]
+> **Database Schema Migration**: Adding `userId` as a relation to existing models in a SQLite database with existing records can require database migration. We propose making `userId` optional (`String?`) or automatically running a script to assign existing records to the first registered user during the migration phase, which avoids database reset. If database reset is acceptable, we can run `prisma migrate dev` directly.
+
+> [!IMPORTANT]
+> **Authentication Check**: All API routes in `app.js` (except login/register) are already protected by the `protect` middleware. We will use the `req.user.id` injected by this middleware to associate and filter all data queries.
+
+## Open Questions
+
+> [!IMPORTANT]
+> - Should we associate all existing unassociated records with the first user in the database, or is resetting the database (`dev.db`) acceptable? (If this is a local development environment, a reset is easiest).
+
+---
+
+## Proposed Changes
+
+### Database Schema (Prisma)
+
+#### [MODIFY] [schema.prisma](file:///d:/inventory%20M-app/server/prisma/schema.prisma)
+- Add `userId` field to `Setting`, `Supplier`, `Category`, `Warehouse`, `Product`, `SaleTransaction`, `SupplierInvoice`, `Customer`, `Expense`, `Loan`, and `Staff` models.
+- Set up Prisma relation fields referencing the `User` model on each of these models.
+- Update unique constraints to be composite per-user (e.g. `@@unique([userId, barcode])` for `Product`, `@@unique([userId, name])` for `Category`, etc.) so that different users can have identical names/barcodes/receipt numbers.
+
+---
+
+### Backend Controllers
+
+#### [MODIFY] [settingController.js](file:///d:/inventory%20M-app/server/src/controllers/settingController.js)
+- Update `getSettings` to query `where: { userId: req.user.id }` and upsert if not found.
+- Update `updateSettings` to upsert/update using `userId: req.user.id`.
+- Update `clearData` to only delete tables where `userId: req.user.id`.
+
+#### [MODIFY] [supplierController.js](file:///d:/inventory%20M-app/server/src/controllers/supplierController.js)
+- Update `getSuppliers`, `createSupplier`, `updateSupplier`, and `deleteSuppliers` to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [categoryController.js](file:///d:/inventory%20M-app/server/src/controllers/categoryController.js)
+- Update `getCategories`, `createCategory`, `updateCategory`, and `deleteCategories` to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [warehouseController.js](file:///d:/inventory%20M-app/server/src/controllers/warehouseController.js)
+- Update `getWarehouses`, `createWarehouse`, `updateWarehouse`, and `deleteWarehouses` to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [productController.js](file:///d:/inventory%20M-app/server/src/controllers/productController.js)
+- Update `getProducts`, `getProductByBarcode`, `createProduct`, `updateProduct`, `deleteProducts`, `getProductById`, and `importProducts` to filter and write using `userId: req.user.id`.
+- Update barcode uniqueness checks in `importProducts` and `createProduct` to check within the user's products.
+
+#### [MODIFY] [saleController.js](file:///d:/inventory%20M-app/server/src/controllers/saleController.js)
+- Update sale transactions queries, creation, and returns to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [customerController.js](file:///d:/inventory%20M-app/server/src/controllers/customerController.js)
+- Update all CRUD operations to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [expenseController.js](file:///d:/inventory%20M-app/server/src/controllers/expenseController.js)
+- Update all CRUD operations to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [loanController.js](file:///d:/inventory%20M-app/server/src/controllers/loanController.js)
+- Update all CRUD operations to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [staffController.js](file:///d:/inventory%20M-app/server/src/controllers/staffController.js)
+- Update all CRUD operations to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [supplierInvoiceController.js](file:///d:/inventory%20M-app/server/src/controllers/supplierInvoiceController.js)
+- Update all invoice queries, creation, and deletions to filter and write using `userId: req.user.id`.
+
+#### [MODIFY] [dashboardController.js](file:///d:/inventory%20M-app/server/src/controllers/dashboardController.js)
+- Update dashboard stats and notifications query filters to scope all requests to `userId: req.user.id`.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Since there are no automated tests, we will run `npx prisma migrate dev --name user_scoping` to ensure the migrations build and apply successfully.
+
+### Manual Verification
+1. Register a new user A and add some products, customers, and sales.
+2. Register a new user B, log in, and verify that the dashboard, product list, and sales are empty.
+3. Add some products to user B and verify they do not appear in user A's dashboard.

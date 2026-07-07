@@ -5,6 +5,7 @@ const prisma = require('../../lib/prisma');
 const getCustomers = async (req, res) => {
   try {
     const customers = await prisma.customer.findMany({
+      where: { userId: req.user.id },
       orderBy: { name: 'asc' },
       include: {
         sales: {
@@ -36,7 +37,8 @@ const createCustomer = async (req, res) => {
         email: email || null,
         address: address || null,
         loyaltyPoints: parseInt(loyaltyPoints) || 0,
-        balance: parseFloat(balance) || 0
+        balance: parseFloat(balance) || 0,
+        userId: req.user.id
       },
       include: {
         sales: {
@@ -60,7 +62,9 @@ const updateCustomer = async (req, res) => {
     const { id } = req.params;
     const { name, phone, email, address, loyaltyPoints, balance } = req.body;
 
-    const existing = await prisma.customer.findUnique({ where: { id } });
+    const existing = await prisma.customer.findFirst({
+      where: { id, userId: req.user.id }
+    });
     if (!existing) {
       return res.status(404).json({ message: 'Customer not found' });
     }
@@ -100,7 +104,7 @@ const deleteCustomers = async (req, res) => {
     }
 
     await prisma.customer.deleteMany({
-      where: { id: { in: ids } }
+      where: { id: { in: ids }, userId: req.user.id }
     });
 
     return res.status(200).json({ message: 'Customer(s) deleted successfully' });

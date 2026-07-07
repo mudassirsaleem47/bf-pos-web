@@ -1,0 +1,49 @@
+# Walkthrough - User-Scoped Data Isolation (Multi-Tenancy)
+
+We have successfully updated the database schema and all backend controllers to enable multi-tenancy. Now, every registered user has completely isolated data. 
+
+## What Was Changed
+
+### 1. Database Schema (`schema.prisma`)
+- Added a `userId` field and a relation to the `User` model on the following models:
+  - `Setting` (one-to-one)
+  - `Supplier`
+  - `Category`
+  - `Warehouse`
+  - `Product`
+  - `SaleTransaction`
+  - `SupplierInvoice`
+  - `Customer`
+  - `Expense`
+  - `Loan`
+  - `Staff`
+- Configured composite unique indexes to prevent global collisions:
+  - `@@unique([userId, name])` on `Category` and `Warehouse`
+  - `@@unique([userId, barcode])` on `Product`
+  - `@@unique([userId, receiptNo])` on `SaleTransaction`
+  - `@@unique([userId, invoiceNo])` on `SupplierInvoice`
+
+### 2. Backend Controllers
+We updated all of the CRUD methods in the controllers to ensure they only read, create, update, or delete data belonging to the logged-in user (`req.user.id`):
+- [settingController.js](file:///d:/inventory%20M-app/server/src/controllers/settingController.js): Modified to upsert default user settings when requested and scope `clearData` transactions to the user.
+- [supplierController.js](file:///d:/inventory%20M-app/server/src/controllers/supplierController.js): Modified to scope suppliers to the user.
+- [categoryController.js](file:///d:/inventory%20M-app/server/src/controllers/categoryController.js): Modified to scope categories to the user.
+- [warehouseController.js](file:///d:/inventory%20M-app/server/src/controllers/warehouseController.js): Modified to scope warehouses to the user.
+- [productController.js](file:///d:/inventory%20M-app/server/src/controllers/productController.js): Modified to scope products, search by barcode, and barcode validation during import.
+- [saleController.js](file:///d:/inventory%20M-app/server/src/controllers/saleController.js): Modified to count sales by user when generating receipt numbers, check product ownership, and decrement stocks.
+- [customerController.js](file:///d:/inventory%20M-app/server/src/controllers/customerController.js): Scoped all customer actions and balance increments.
+- [expenseController.js](file:///d:/inventory%20M-app/server/src/controllers/expenseController.js): Scoped expenses.
+- [loanController.js](file:///d:/inventory%20M-app/server/src/controllers/loanController.js): Scoped loans.
+- [staffController.js](file:///d:/inventory%20M-app/server/src/controllers/staffController.js): Scoped staff.
+- [supplierInvoiceController.js](file:///d:/inventory%20M-app/server/src/controllers/supplierInvoiceController.js): Modified to count supplier invoices by user for custom numbers and check warehouse/supplier ownership.
+- [dashboardController.js](file:///d:/inventory%20M-app/server/src/controllers/dashboardController.js): Modified to scope dashboard stats and low-stock/expiry alerts.
+
+### 3. Database Applied
+- Re-ran the database generator and successfully applied schema changes via Prisma.
+
+---
+
+## Manual Verification Recommended
+1. Register a new user A and add some test data (products, sales, warehouse).
+2. Register a new user B, log in, and verify that their dashboard and product list starts completely empty.
+3. Add data under user B, log back into user A, and verify that user A cannot see user B's data.

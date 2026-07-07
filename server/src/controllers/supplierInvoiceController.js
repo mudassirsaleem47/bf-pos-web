@@ -2,9 +2,11 @@ const prisma = require('../../lib/prisma');
 const path = require('path');
 const fs = require('fs');
 
-// Generate unique invoice number
-const generateInvoiceNo = async () => {
-  const count = await prisma.supplierInvoice.count();
+// Generate unique invoice number scoped to user
+const generateInvoiceNo = async (userId) => {
+  const count = await prisma.supplierInvoice.count({
+    where: { userId }
+  });
   return `SINV-${String(count + 1).padStart(4, '0')}`;
 };
 
@@ -13,6 +15,7 @@ const generateInvoiceNo = async () => {
 const getInvoices = async (req, res) => {
   try {
     const invoices = await prisma.supplierInvoice.findMany({
+      where: { userId: req.user.id },
       orderBy: { createdAt: 'desc' },
       include: {
         supplier: { select: { id: true, name: true } },
@@ -32,8 +35,8 @@ const getInvoices = async (req, res) => {
 const getInvoice = async (req, res) => {
   try {
     const { id } = req.params;
-    const invoice = await prisma.supplierInvoice.findUnique({
-      where: { id },
+    const invoice = await prisma.supplierInvoice.findFirst({
+      where: { id, userId: req.user.id },
       include: {
         supplier: true,
         warehouse: true,
@@ -58,6 +61,17 @@ const createInvoice = async (req, res) => {
       return res.status(400).json({ message: 'Supplier, Warehouse, and Date are required' });
     }
 
+    // Verify supplier and warehouse belong to user
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: supplierId, userId: req.user.id }
+    });
+    const warehouse = await prisma.warehouse.findFirst({
+      where: { id: warehouseId, userId: req.user.id }
+    });
+    if (!supplier || !warehouse) {
+      return res.status(400).json({ message: 'Supplier or Warehouse not found or unauthorized' });
+    }
+
     const parsedItems = items ? JSON.parse(items) : [];
     if (parsedItems.length === 0) {
       return res.status(400).json({ message: 'At least one item is required' });
@@ -66,7 +80,7 @@ const createInvoice = async (req, res) => {
     const grandTotal = parsedItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
     const paid = parseFloat(paidAmount) || 0;
     const due = grandTotal - paid;
-    const invoiceNo = await generateInvoiceNo();
+    const invoiceNo = await generateInvoiceNo(req.user.id);
     const imagePath = req.file ? `uploads/supplier-invoices/${req.file.filename}` : null;
 
     const invoice = await prisma.supplierInvoice.create({
@@ -79,6 +93,7 @@ const createInvoice = async (req, res) => {
         grandTotal,
         paidAmount: paid,
         due,
+        userId: req.user.id,
         items: {
           create: parsedItems.map(item => ({
             itemName: item.itemName,
@@ -105,8 +120,24 @@ const updateInvoice = async (req, res) => {
     const { id } = req.params;
     const { supplierId, warehouseId, date, paidAmount, items } = req.body;
 
-    const existing = await prisma.supplierInvoice.findUnique({ where: { id } });
+    const existing = await prisma.supplierInvoice.findFirst({
+      where: { id, userId: req.user.id }
+    });
     if (!existing) return res.status(404).json({ message: 'Invoice not found' });
+
+    // Verify supplier and warehouse belong to user if updated
+    if (supplierId) {
+      const supplier = await prisma.supplier.findFirst({
+        where: { id: supplierId, userId: req.user.id }
+      });
+      if (!supplier) return res.status(400).json({ message: 'Supplier not found or unauthorized' });
+    }
+    if (warehouseId) {
+      const warehouse = await prisma.warehouse.findFirst({
+        where: { id: warehouseId, userId: req.user.id }
+      });
+      if (!warehouse) return res.status(400).json({ message: 'Warehouse not found or unauthorized' });
+    }
 
     const parsedItems = items ? JSON.parse(items) : [];
     const grandTotal = parsedItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
@@ -124,7 +155,12 @@ const updateInvoice = async (req, res) => {
     }
 
     // Delete old items and recreate
-    await prisma.supplierInvoiceItem.deleteMany({ where: { invoiceId: id } });
+    await prisma.supplierInvoiceItem.deleteMany({
+      where: {
+        invoiceId: id,
+        invoice: { userId: req.user.id }
+      }
+    });
 
     const updated = await prisma.supplierInvoice.update({
       where: { id },
@@ -164,8 +200,10 @@ const deleteInvoices = async (req, res) => {
       return res.status(400).json({ message: 'Invoice IDs are required' });
     }
 
-    // Delete images
-    const invoices = await prisma.supplierInvoice.findMany({ where: { id: { in: ids } } });
+    // Delete images, scoped to user
+    const invoices = await prisma.supplierInvoice.findMany({
+      where: { id: { in: ids }, userId: req.user.id }
+    });
     invoices.forEach(inv => {
       if (inv.imagePath) {
         const imgPath = path.join(__dirname, '../../', inv.imagePath);
@@ -173,7 +211,9 @@ const deleteInvoices = async (req, res) => {
       }
     });
 
-    await prisma.supplierInvoice.deleteMany({ where: { id: { in: ids } } });
+    await prisma.supplierInvoice.deleteMany({
+      where: { id: { in: ids }, userId: req.user.id }
+    });
     return res.status(200).json({ message: 'Invoices deleted successfully' });
   } catch (error) {
     console.error('Delete invoices error:', error);

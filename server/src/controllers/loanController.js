@@ -5,6 +5,7 @@ const prisma = require('../../lib/prisma');
 const getLoans = async (req, res) => {
   try {
     const loans = await prisma.loan.findMany({
+      where: { userId: req.user.id },
       orderBy: { dueDate: 'asc' }
     });
     return res.status(200).json(loans);
@@ -31,7 +32,8 @@ const createLoan = async (req, res) => {
         interestRate: parseFloat(interestRate) || 0,
         dueDate: dueDate ? new Date(dueDate) : new Date(),
         status: status || 'Active',
-        description: description || null
+        description: description || null,
+        userId: req.user.id
       }
     });
 
@@ -49,7 +51,9 @@ const updateLoan = async (req, res) => {
     const { id } = req.params;
     const { partnerName, type, amount, interestRate, dueDate, status, description } = req.body;
 
-    const existing = await prisma.loan.findUnique({ where: { id } });
+    const existing = await prisma.loan.findFirst({
+      where: { id, userId: req.user.id }
+    });
     if (!existing) {
       return res.status(404).json({ message: 'Loan record not found' });
     }
@@ -84,7 +88,7 @@ const deleteLoans = async (req, res) => {
     }
 
     await prisma.loan.deleteMany({
-      where: { id: { in: ids } }
+      where: { id: { in: ids }, userId: req.user.id }
     });
 
     return res.status(200).json({ message: 'Loan record(s) deleted successfully' });

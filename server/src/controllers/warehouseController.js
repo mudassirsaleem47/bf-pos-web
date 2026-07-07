@@ -6,6 +6,7 @@ const prisma = require('../../lib/prisma');
 const getWarehouses = async (req, res) => {
   try {
     const warehouses = await prisma.warehouse.findMany({
+      where: { userId: req.user.id },
       orderBy: { createdAt: 'desc' }
     });
     return res.status(200).json(warehouses);
@@ -33,6 +34,7 @@ const createWarehouse = async (req, res) => {
         capacity: capacity ? parseInt(capacity) : null,
         manager: manager || null,
         phone: phone || null,
+        userId: req.user.id
       }
     });
 
@@ -58,7 +60,9 @@ const updateWarehouse = async (req, res) => {
       return res.status(400).json({ message: 'Warehouse name is required' });
     }
 
-    const existing = await prisma.warehouse.findUnique({ where: { id } });
+    const existing = await prisma.warehouse.findFirst({
+      where: { id, userId: req.user.id }
+    });
     if (!existing) {
       return res.status(404).json({ message: 'Warehouse not found' });
     }
@@ -96,7 +100,10 @@ const deleteWarehouses = async (req, res) => {
     }
 
     await prisma.warehouse.deleteMany({
-      where: { id: { in: ids } }
+      where: {
+        id: { in: ids },
+        userId: req.user.id
+      }
     });
 
     return res.status(200).json({ message: 'Warehouses deleted successfully' });

@@ -6,33 +6,43 @@ const getDashboardStats = async (req, res) => {
   try {
     const [products, sales, categories, suppliers, settings, supplierInvoices, expenses, loans, customers] = await Promise.all([
       prisma.product.findMany({
+        where: { userId: req.user.id },
         include: { category: { select: { id: true, name: true } } },
         orderBy: { createdAt: 'desc' }
       }),
       prisma.saleTransaction.findMany({
+        where: { userId: req.user.id },
         orderBy: { createdAt: 'desc' },
         include: { items: true }
       }),
       prisma.category.findMany({
+        where: { userId: req.user.id },
         orderBy: { name: 'asc' }
       }),
       prisma.supplier.findMany({
+        where: { userId: req.user.id },
         orderBy: { name: 'asc' }
       }),
-      prisma.setting.findUnique({
-        where: { id: 'default' }
+      prisma.setting.upsert({
+        where: { userId: req.user.id },
+        update: {},
+        create: { userId: req.user.id }
       }),
       prisma.supplierInvoice.findMany({
+        where: { userId: req.user.id },
         orderBy: { createdAt: 'desc' },
         include: { supplier: true, warehouse: true, items: true }
       }),
       prisma.expense.findMany({
+        where: { userId: req.user.id },
         orderBy: { date: 'desc' }
       }),
       prisma.loan.findMany({
+        where: { userId: req.user.id },
         orderBy: { dueDate: 'asc' }
       }),
       prisma.customer.findMany({
+        where: { userId: req.user.id },
         orderBy: { createdAt: 'desc' }
       })
     ]);
@@ -65,12 +75,13 @@ const getNotifications = async (req, res) => {
     const [lowStock, expired, overdueLoans] = await Promise.all([
       // 1. Low stock products (stock <= 5)
       prisma.product.findMany({
-        where: { stock: { lte: 5 } },
+        where: { stock: { lte: 5 }, userId: req.user.id },
         select: { id: true, name: true, stock: true, unit: true }
       }),
       // 2. Expired or expiring soon (within 30 days)
       prisma.product.findMany({
         where: {
+          userId: req.user.id,
           expiryDate: {
             not: null,
             lte: thirtyDaysFromNow
@@ -81,7 +92,8 @@ const getNotifications = async (req, res) => {
       // 3. Overdue loans
       prisma.loan.findMany({
         where: {
-          status: 'Overdue'
+          status: 'Overdue',
+          userId: req.user.id
         },
         select: { id: true, partnerName: true, amount: true, type: true, dueDate: true }
       })

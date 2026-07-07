@@ -6,6 +6,9 @@ const prisma = require('../../lib/prisma');
 const getSuppliers = async (req, res) => {
   try {
     const suppliers = await prisma.supplier.findMany({
+      where: {
+        userId: req.user.id
+      },
       orderBy: {
         createdAt: 'desc'
       }
@@ -35,7 +38,8 @@ const createSupplier = async (req, res) => {
         contactPerson,
         email: email || null,
         phone: phone || null,
-        address: address || null
+        address: address || null,
+        userId: req.user.id
       }
     });
 
@@ -46,6 +50,9 @@ const createSupplier = async (req, res) => {
   }
 };
 
+// @desc    Delete suppliers (bulk)
+// @route   DELETE /api/suppliers
+// @access  Private
 const deleteSuppliers = async (req, res) => {
   try {
     const { ids } = req.body;
@@ -58,17 +65,21 @@ const deleteSuppliers = async (req, res) => {
       where: {
         id: {
           in: ids
-        }
+        },
+        userId: req.user.id
       }
     });
 
     return res.status(200).json({ message: 'Suppliers deleted successfully' });
   } catch (error) {
     console.error('Delete suppliers error:', error);
-    return res.status(500).json({ message: 'Server error deleting suppliers' });
+    return res.status(500).json({ message: `Server error deleting suppliers: ${error.message || error}` });
   }
 };
 
+// @desc    Update a supplier
+// @route   PUT /api/suppliers/:id
+// @access  Private
 const updateSupplier = async (req, res) => {
   try {
     const { id } = req.params;
@@ -79,9 +90,9 @@ const updateSupplier = async (req, res) => {
       return res.status(400).json({ message: 'Supplier name and Contact Person are required' });
     }
 
-    // Check if supplier exists
-    const existingSupplier = await prisma.supplier.findUnique({
-      where: { id }
+    // Check if supplier exists and belongs to the user
+    const existingSupplier = await prisma.supplier.findFirst({
+      where: { id, userId: req.user.id }
     });
 
     if (!existingSupplier) {

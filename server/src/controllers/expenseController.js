@@ -5,6 +5,7 @@ const prisma = require('../../lib/prisma');
 const getExpenses = async (req, res) => {
   try {
     const expenses = await prisma.expense.findMany({
+      where: { userId: req.user.id },
       orderBy: { date: 'desc' }
     });
     return res.status(200).json(expenses);
@@ -29,7 +30,8 @@ const createExpense = async (req, res) => {
         category,
         amount: parseFloat(amount) || 0,
         date: date ? new Date(date) : new Date(),
-        description: description || null
+        description: description || null,
+        userId: req.user.id
       }
     });
 
@@ -47,7 +49,9 @@ const updateExpense = async (req, res) => {
     const { id } = req.params;
     const { title, category, amount, date, description } = req.body;
 
-    const existing = await prisma.expense.findUnique({ where: { id } });
+    const existing = await prisma.expense.findFirst({
+      where: { id, userId: req.user.id }
+    });
     if (!existing) {
       return res.status(404).json({ message: 'Expense record not found' });
     }
@@ -80,7 +84,7 @@ const deleteExpenses = async (req, res) => {
     }
 
     await prisma.expense.deleteMany({
-      where: { id: { in: ids } }
+      where: { id: { in: ids }, userId: req.user.id }
     });
 
     return res.status(200).json({ message: 'Expense record(s) deleted successfully' });

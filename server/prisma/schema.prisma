@@ -10,31 +10,46 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  id               String            @id @default(uuid())
+  name             String
+  email            String            @unique
+  password         String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @default(now()) @updatedAt
+  settings         Setting?
+  suppliers        Supplier[]
+  categories       Category[]
+  warehouses       Warehouse[]
+  products         Product[]
+  saleTransactions SaleTransaction[]
+  supplierInvoices SupplierInvoice[]
+  customers        Customer[]
+  expenses         Expense[]
+  loans            Loan[]
+  staff            Staff[]
 }
 
 model Setting {
-  id            String  @id @default("default")
-  storeName     String  @default("My Store")
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeName     String   @default("My Store")
   address       String?
   phone         String?
   email         String?
   website       String?
   logoPath      String?
-  taxRate       Float   @default(0)
-  currency      String  @default("Rs.")
-  receiptFooter String  @default("Thank you! Come again")
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  taxRate       Float    @default(0)
+  currency      String   @default("Rs.")
+  receiptFooter String   @default("Thank you! Come again")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
 }
 
 model Supplier {
   id            String            @id @default(uuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
   contactPerson String
   email         String?
@@ -48,37 +63,47 @@ model Supplier {
 
 model Category {
   id          String    @id @default(uuid())
-  name        String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
   description String?
   createdAt   DateTime  @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  updatedAt   DateTime  @default(now()) @updatedAt
   products    Product[]
+
+  @@unique([userId, name])
 }
 
 model Warehouse {
   id        String            @id @default(uuid())
-  name      String            @unique
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
   location  String?
   capacity  Int?
   manager   String?
   phone     String?
   createdAt DateTime          @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  updatedAt DateTime          @default(now()) @updatedAt
   products  Product[]
   invoices  SupplierInvoice[]
+
+  @@unique([userId, name])
 }
 
 model Product {
   id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
-  barcode       String     @unique
+  barcode       String
   price         Float      @default(0)
   stock         Float      @default(0)
   unit          String     @default("pcs")
   expiryDate    DateTime?
   categoryId    String?
   createdAt     DateTime   @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  updatedAt     DateTime   @default(now()) @updatedAt
   detail        String?
   imagePath     String?
   lowStockAlert Float?     @default(5)
@@ -92,11 +117,15 @@ model Product {
   supplier      Supplier?  @relation(fields: [supplierId], references: [id])
   warehouse     Warehouse? @relation(fields: [warehouseId], references: [id])
   saleItems     SaleItem[]
+
+  @@unique([userId, barcode])
 }
 
 model SaleTransaction {
   id          String     @id @default(uuid())
-  receiptNo   String     @unique
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receiptNo   String
   totalAmount Float      @default(0)
   paidAmount  Float      @default(0)
   change      Float      @default(0)
@@ -105,8 +134,10 @@ model SaleTransaction {
   customerId  String?
   customer    Customer?  @relation(fields: [customerId], references: [id])
   createdAt   DateTime   @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  updatedAt   DateTime   @default(now()) @updatedAt
   items       SaleItem[]
+
+  @@unique([userId, receiptNo])
 }
 
 model SaleItem {
@@ -124,7 +155,9 @@ model SaleItem {
 
 model SupplierInvoice {
   id          String                @id @default(uuid())
-  invoiceNo   String                @unique
+  userId      String
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoiceNo   String
   supplierId  String
   warehouseId String
   date        DateTime
@@ -133,10 +166,12 @@ model SupplierInvoice {
   paidAmount  Float                 @default(0)
   due         Float                 @default(0)
   createdAt   DateTime              @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  updatedAt   DateTime              @default(now()) @updatedAt
   supplier    Supplier              @relation(fields: [supplierId], references: [id])
   warehouse   Warehouse             @relation(fields: [warehouseId], references: [id])
   items       SupplierInvoiceItem[]
+
+  @@unique([userId, invoiceNo])
 }
 
 model SupplierInvoiceItem {
@@ -150,31 +185,37 @@ model SupplierInvoiceItem {
 }
 
 model Customer {
-  id            String   @id @default(uuid())
+  id            String            @id @default(uuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
   phone         String?
   email         String?
   address       String?
-  loyaltyPoints Int      @default(0)
-  balance       Float    @default(0)
-  createdAt     DateTime @default(now())
+  loyaltyPoints Int               @default(0)
+  balance       Float             @default(0)
+  createdAt     DateTime          @default(now())
   updatedAt     DateTime          @default(now()) @updatedAt
   sales         SaleTransaction[]
 }
 
 model Expense {
   id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
   category    String
   amount      Float
   date        DateTime
   description String?
   createdAt   DateTime @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  updatedAt   DateTime @default(now()) @updatedAt
 }
 
 model Loan {
   id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   partnerName  String
   type         String
   amount       Float
@@ -183,11 +224,13 @@ model Loan {
   status       String   @default("Active")
   description  String?
   createdAt    DateTime @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  updatedAt    DateTime @default(now()) @updatedAt
 }
 
 model Staff {
   id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   email     String?
   phone     String?
@@ -196,13 +239,14 @@ model Staff {
   dateHired DateTime
   status    String   @default("Active")
   createdAt DateTime @default(now())
-  updatedAt     DateTime          @default(now()) @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model SyncLog {
-  id         String   @id @default(uuid())
-  modelName  String
-  recordId   String
-  action     String
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String?
+  modelName String
+  recordId  String
+  action    String
+  createdAt DateTime @default(now())
 }

@@ -24,7 +24,10 @@ const protect = async (req, res, next) => {
       const { password, ...userWithoutPassword } = user;
       req.user = userWithoutPassword;
 
-      next();
+      const { asyncLocalStorage } = require('../utils/storage');
+      asyncLocalStorage.run({ userId: userWithoutPassword.id }, () => {
+        next();
+      });
     } catch (error) {
       console.error('Auth verification error:', error);
       return res.status(401).json({ message: 'Not authorized, token failed' });
