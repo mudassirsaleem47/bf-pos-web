@@ -61,18 +61,81 @@ const pushChanges = async (req, res) => {
         if (cleanData.dateHired) cleanData.dateHired = new Date(cleanData.dateHired);
 
         if (modelName === 'Product') {
+          // Check unique constraint on barcode per user
+          let uniqueBarcode = cleanData.barcode;
+          let counter = 1;
+          while (true) {
+            const existing = await prisma.product.findFirst({
+              where: {
+                userId,
+                barcode: uniqueBarcode,
+                NOT: { id: recordId }
+              }
+            });
+            if (!existing) break;
+            uniqueBarcode = `${cleanData.barcode}-migrated-${counter}`;
+            counter++;
+          }
+          cleanData.barcode = uniqueBarcode;
+
+          // Check foreign keys
+          if (cleanData.categoryId) {
+            const exists = await prisma.category.findUnique({ where: { id: cleanData.categoryId } });
+            if (!exists) cleanData.categoryId = null;
+          }
+          if (cleanData.supplierId) {
+            const exists = await prisma.supplier.findUnique({ where: { id: cleanData.supplierId } });
+            if (!exists) cleanData.supplierId = null;
+          }
+          if (cleanData.warehouseId) {
+            const exists = await prisma.warehouse.findUnique({ where: { id: cleanData.warehouseId } });
+            if (!exists) cleanData.warehouseId = null;
+          }
+
           await prisma.product.upsert({
             where: { id: recordId },
             create: cleanData,
             update: cleanData
           });
         } else if (modelName === 'Category') {
+          let uniqueName = cleanData.name;
+          let counter = 1;
+          while (true) {
+            const existing = await prisma.category.findFirst({
+              where: {
+                userId,
+                name: uniqueName,
+                NOT: { id: recordId }
+              }
+            });
+            if (!existing) break;
+            uniqueName = `${cleanData.name}-migrated-${counter}`;
+            counter++;
+          }
+          cleanData.name = uniqueName;
+
           await prisma.category.upsert({
             where: { id: recordId },
             create: cleanData,
             update: cleanData
           });
         } else if (modelName === 'Warehouse') {
+          let uniqueName = cleanData.name;
+          let counter = 1;
+          while (true) {
+            const existing = await prisma.warehouse.findFirst({
+              where: {
+                userId,
+                name: uniqueName,
+                NOT: { id: recordId }
+              }
+            });
+            if (!existing) break;
+            uniqueName = `${cleanData.name}-migrated-${counter}`;
+            counter++;
+          }
+          cleanData.name = uniqueName;
+
           await prisma.warehouse.upsert({
             where: { id: recordId },
             create: cleanData,
@@ -109,6 +172,28 @@ const pushChanges = async (req, res) => {
             update: cleanData
           });
         } else if (modelName === 'SaleTransaction') {
+          let uniqueReceiptNo = cleanData.receiptNo;
+          let counter = 1;
+          while (true) {
+            const existing = await prisma.saleTransaction.findFirst({
+              where: {
+                userId,
+                receiptNo: uniqueReceiptNo,
+                NOT: { id: recordId }
+              }
+            });
+            if (!existing) break;
+            uniqueReceiptNo = `${cleanData.receiptNo}-migrated-${counter}`;
+            counter++;
+          }
+          cleanData.receiptNo = uniqueReceiptNo;
+
+          // Check customerId foreign key if present
+          if (cleanData.customerId) {
+            const exists = await prisma.customer.findUnique({ where: { id: cleanData.customerId } });
+            if (!exists) cleanData.customerId = null;
+          }
+
           // Delete existing nested items first
           await prisma.saleItem.deleteMany({ where: { saleId: recordId } });
           
@@ -123,6 +208,14 @@ const pushChanges = async (req, res) => {
             total: parseFloat(it.total)
           })) : [];
 
+          // For items, check productId foreign key
+          for (const item of itemsData) {
+            if (item.productId) {
+              const exists = await prisma.product.findUnique({ where: { id: item.productId } });
+              if (!exists) item.productId = null;
+            }
+          }
+
           await prisma.saleTransaction.upsert({
             where: { id: recordId },
             create: {
@@ -135,6 +228,59 @@ const pushChanges = async (req, res) => {
             }
           });
         } else if (modelName === 'SupplierInvoice') {
+          let uniqueInvoiceNo = cleanData.invoiceNo;
+          let counter = 1;
+          while (true) {
+            const existing = await prisma.supplierInvoice.findFirst({
+              where: {
+                userId,
+                invoiceNo: uniqueInvoiceNo,
+                NOT: { id: recordId }
+              }
+            });
+            if (!existing) break;
+            uniqueInvoiceNo = `${cleanData.invoiceNo}-migrated-${counter}`;
+            counter++;
+          }
+          cleanData.invoiceNo = uniqueInvoiceNo;
+
+          // Check supplierId and warehouseId foreign keys
+          if (cleanData.supplierId) {
+            const exists = await prisma.supplier.findUnique({ where: { id: cleanData.supplierId } });
+            if (!exists) {
+              const firstSupplier = await prisma.supplier.findFirst({ where: { userId } });
+              if (firstSupplier) {
+                cleanData.supplierId = firstSupplier.id;
+              } else {
+                const fallback = await prisma.supplier.create({
+                  data: {
+                    userId,
+                    name: 'Fallback Supplier',
+                    contactPerson: 'None'
+                  }
+                });
+                cleanData.supplierId = fallback.id;
+              }
+            }
+          }
+          if (cleanData.warehouseId) {
+            const exists = await prisma.warehouse.findUnique({ where: { id: cleanData.warehouseId } });
+            if (!exists) {
+              const firstWarehouse = await prisma.warehouse.findFirst({ where: { userId } });
+              if (firstWarehouse) {
+                cleanData.warehouseId = firstWarehouse.id;
+              } else {
+                const fallback = await prisma.warehouse.create({
+                  data: {
+                    userId,
+                    name: 'Fallback Warehouse'
+                  }
+                });
+                cleanData.warehouseId = fallback.id;
+              }
+            }
+          }
+
           await prisma.supplierInvoiceItem.deleteMany({ where: { invoiceId: recordId } });
 
           const itemsData = items ? items.map(it => ({
