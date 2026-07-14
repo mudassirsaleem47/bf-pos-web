@@ -35,8 +35,34 @@ import {
 import { Delete as DeleteIcon, Print as PrintIcon, Clear as ClearIcon, AssignmentReturn as ReturnIcon, CheckCircle as CheckCircleIcon, Usb as UsbIcon, Add as AddIcon } from '@mui/icons-material';
 import Barcode from 'react-barcode';
 import { usbPrinter } from '../utils/usbPrinter';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import dayjs from 'dayjs';
 
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost') ? import.meta.env.VITE_API_URL : window.location.origin);
+
+const loadImage = (url) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const isCrossOrigin = url.startsWith('http') && !url.startsWith(window.location.origin);
+    if (isCrossOrigin) {
+      img.crossOrigin = 'Anonymous';
+    }
+    img.onload = () => resolve(img);
+    img.onerror = () => {
+      if (isCrossOrigin) {
+        // Fallback: try loading without crossOrigin if CORS failed
+        const retryImg = new Image();
+        retryImg.onload = () => resolve(retryImg);
+        retryImg.onerror = () => resolve(null);
+        retryImg.src = url;
+      } else {
+        resolve(null);
+      }
+    };
+    img.src = url;
+  });
+};
 
 const POS = () => {
   const navigate = useNavigate();
@@ -375,7 +401,7 @@ const POS = () => {
     if (!saleToPrint) return;
 
     /*
-    // --- THERMAL USB PRINTING CODE (SAVED FOR LATER USE) ---
+    // --- THERMAL USB PRINTING CODE (COMMENTED OUT AS REQUESTED) ---
     if (printMethod === 'usb') {
       try {
         setError('');
@@ -387,8 +413,6 @@ const POS = () => {
         setError('Direct USB printing failed: ' + err.message + '. Falling back to Browser Print.');
       }
     }
-    // -------------------------------------------------------
-    */
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (!printWindow) {
@@ -559,6 +583,180 @@ const POS = () => {
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
+    */
+    // -------------------------------------------------------------------------
+
+    // Generate A4 PDF instead of thermal print
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+
+      // Load store logo
+      const hasLogo = settings.logoPath && settings.logoPath !== 'null' && settings.logoPath !== '';
+      const logoUrl = hasLogo 
+        ? `${API_URL}/${settings.logoPath}` 
+        : '/bglogo.png';
+      
+      console.log('Invoice PDF - Constructed Logo URL:', logoUrl);
+      const logoImg = await loadImage(logoUrl);
+      console.log('Invoice PDF - Loaded Logo Image:', logoImg ? 'Success' : 'Failed');
+
+      // Blue colored header bar
+      doc.setFillColor(37, 99, 235);
+      doc.rect(0, 0, pageW, 28, 'F');
+
+      let textStartX = 14;
+      if (logoImg) {
+        try {
+          // Draw to canvas to get a clean Data URL (avoids PNG transparency / format crashes in jsPDF)
+          const canvas = document.createElement('canvas');
+          canvas.width = logoImg.naturalWidth || logoImg.width;
+          canvas.height = logoImg.naturalHeight || logoImg.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(logoImg, 0, 0);
+          const imgData = canvas.toDataURL('image/png');
+          
+          doc.addImage(imgData, 'PNG', 14, 4, 20, 20);
+          console.log('Invoice PDF - Successfully added logo to PDF');
+          textStartX = 38;
+        } catch (imgErr) {
+          console.error("Invoice PDF - Error rendering logo to PDF:", imgErr);
+        }
+      } else {
+        console.warn("Invoice PDF - Logo image could not be loaded, skipping.");
+      }
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text(settings.storeName.toUpperCase(), textStartX, 12);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Invoice / Receipt: ${saleToPrint.receiptNo || 'Draft'}`, textStartX, 20);
+
+      const dateStr = dayjs(saleToPrint.createdAt || new Date()).format('DD/MM/YYYY hh:mm A');
+      doc.text(`Date: ${dateStr}`, pageW - 14, 20, { align: 'right' });
+
+      // Store profile details
+      doc.setTextColor(30, 41, 59);
+      const infoY = 38;
+      const col2 = pageW / 2 + 5;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text('STORE ADDRESS', 14, infoY);
+      doc.text('CUSTOMER DETAILS', col2, infoY);
+
+      doc.setTextColor(15, 23, 42);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(settings.address || 'N/A', 14, infoY + 6, { maxWidth: pageW / 2 - 10 });
+
+      // Customer Info
+      const custName = saleToPrint.customer?.name || selectedCustomer?.name || 'Walk-in Customer';
+      const custPhone = saleToPrint.customer?.phone || selectedCustomer?.phone || '';
+      let customerText = `Name: ${custName}`;
+      if (custPhone) customerText += `\nPhone: ${custPhone}`;
+      doc.text(customerText, col2, infoY + 6);
+
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.4);
+      doc.line(14, infoY + 22, pageW - 14, infoY + 22);
+
+      // Items table
+      const tableStartY = infoY + 28;
+      
+      const itemsList = saleToPrint.items || cart.map((item) => ({
+        name: item.name,
+        barcode: item.barcode,
+        quantity: item.qty || item.quantity,
+        price: item.price,
+        discount: item.discount || 0,
+        total: item.total,
+      }));
+
+      autoTable(doc, {
+        startY: tableStartY,
+        head: [['#', 'Item / Product', 'Barcode', 'Quantity', `Price (${settings.currency || 'Rs.'})`, `Total (${settings.currency || 'Rs.'})`]],
+        body: itemsList.map((item, i) => [
+          i + 1,
+          parseFloat(item.discount || 0) > 0 
+            ? `${item.name}\n(Disc: -${settings.currency || 'Rs.'}${parseFloat(item.discount).toFixed(2)})`
+            : item.name,
+          item.barcode || '-',
+          item.quantity || item.qty,
+          parseFloat(item.price).toFixed(2),
+          parseFloat(item.total).toFixed(2),
+        ]),
+        styles: { fontSize: 9, cellPadding: 3, textColor: [71, 85, 105] },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 10, halign: 'center' },
+          3: { halign: 'center' },
+          4: { halign: 'right' },
+          5: { halign: 'right', fontStyle: 'bold' },
+        },
+        margin: { left: 14, right: 14 },
+        tableLineColor: [226, 232, 240],
+        tableLineWidth: 0.3,
+      });
+
+      // Totals Section
+      const totalsY = doc.lastAutoTable.finalY + 8;
+      const totalsX = pageW - 80;
+      const totalsW = 66;
+
+      const drawTotalRow = (label, value, y, bgRgb, textRgb) => {
+        doc.setFillColor(...bgRgb);
+        doc.rect(totalsX, y, totalsW, 9, 'F');
+        doc.setTextColor(...textRgb);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text(label, totalsX + 3, y + 6);
+        doc.text(`${settings.currency || 'Rs.'} ${value}`, totalsX + totalsW - 3, y + 6, { align: 'right' });
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.rect(totalsX, y, totalsW, 9);
+      };
+
+      const taxVal = saleToPrint.tax || 0;
+      const subtotalVal = saleToPrint ? (saleToPrint.totalAmount + saleToPrint.discount - taxVal) : subtotal;
+      const discountVal = saleToPrint ? saleToPrint.discount : (totalItemDiscount + finalDiscount);
+      const totalVal = saleToPrint ? saleToPrint.totalAmount : total;
+      const paidVal = saleToPrint ? saleToPrint.paidAmount : paid;
+      const changeVal = saleToPrint ? saleToPrint.change : change;
+
+      drawTotalRow('Subtotal', subtotalVal.toFixed(2), totalsY, [255, 255, 255], [15, 23, 42]);
+      drawTotalRow('Discount Given', discountVal.toFixed(2), totalsY + 9, [254, 242, 242], [185, 28, 28]);
+      drawTotalRow('Tax Collected', taxVal.toFixed(2), totalsY + 18, [255, 255, 255], [15, 23, 42]);
+      drawTotalRow('Grand Total', totalVal.toFixed(2), totalsY + 27, [248, 250, 252], [15, 23, 42]);
+      drawTotalRow('Paid Amount', paidVal.toFixed(2), totalsY + 36, [240, 253, 244], [21, 128, 61]);
+      drawTotalRow('Cash Change', changeVal.toFixed(2), totalsY + 45, [240, 253, 244], [21, 128, 61]);
+
+      // Footer note
+      const pageH = doc.internal.pageSize.getHeight();
+      doc.setTextColor(100, 116, 139);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(10);
+      doc.text(settings.receiptFooter || 'Thank you for your visit!', pageW / 2, pageH - 20, { align: 'center' });
+
+      doc.setTextColor(148, 163, 184);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.text(`POS Cashier Transaction System • Receipt #${saleToPrint.receiptNo || 'Draft'}`, 14, pageH - 8);
+      doc.text('Inventory Management System', pageW - 14, pageH - 8, { align: 'right' });
+
+      // Clean customer name for filename
+      const cleanCustomerName = custName.replace(/[^a-z0-9]/gi, '_');
+      doc.save(`${saleToPrint.receiptNo || 'Draft'}_${cleanCustomerName}.pdf`);
+      setSuccessMsg('Invoice saved as A4 PDF successfully!');
+    } catch (pdfErr) {
+      console.error('Failed to generate PDF:', pdfErr);
+      setError('Failed to generate PDF: ' + pdfErr.message);
+    }
   };
 
   // Auto-print receipt when checkout completes

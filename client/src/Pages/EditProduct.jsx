@@ -41,6 +41,13 @@ const EditProduct = () => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // AVCO Calculator popup states
+  const [openAvcoDialog, setOpenAvcoDialog] = useState(false);
+  const [avcoQty, setAvcoQty] = useState('');
+  const [avcoCost, setAvcoCost] = useState('');
+  const [originalStock, setOriginalStock] = useState(0);
+  const [originalCost, setOriginalCost] = useState(0);
+
   // Category Sub-Dialog States
   const [openCategoryDialog, setOpenCategoryDialog] = useState(false);
   const [catForm, setCatForm] = useState({ name: '', description: '' });
@@ -165,6 +172,9 @@ const EditProduct = () => {
         model: data.model || '',
         supplierId: data.supplierId || '',
       });
+
+      setOriginalStock(data.stock !== null ? parseFloat(data.stock) : 0);
+      setOriginalCost(data.supplierPrice !== null ? parseFloat(data.supplierPrice) : 0);
     } catch (err) {
       setError(err.message || 'Failed to load product details');
     } finally {
@@ -375,14 +385,14 @@ const EditProduct = () => {
 
               <Stack direction="row" spacing={1} alignItems="flex-end">
                 <FormControl variant="standard" fullWidth size="small">
-                  <InputLabel id="category-select-label">Categories</InputLabel>
+                  <InputLabel id="category-select-label">Brands</InputLabel>
                   <Select
                     labelId="category-select-label"
                     value={formData.categoryId}
                     onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
                   >
                     <MenuItem value="">
-                      <em>Select Categories (Optional)</em>
+                      <em>Select Brand (Optional)</em>
                     </MenuItem>
                     {categories.map((cat) => (
                       <MenuItem key={cat.id} value={cat.id}>
@@ -556,6 +566,24 @@ const EditProduct = () => {
                 </Stack>
               </Stack>
             </Box>
+          </Box>
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#334155' }}>
+              Pricing & Inventory Settings
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => {
+                setAvcoQty('');
+                setAvcoCost('');
+                setOpenAvcoDialog(true);
+              }}
+              sx={{ textTransform: 'none', borderRadius: 1.5, fontSize: '0.8rem', py: 0.5 }}
+            >
+              Calculate Weighted Cost (AVCO)
+            </Button>
           </Box>
 
           {/* Bottom Row Table Grid */}
@@ -789,14 +817,209 @@ const EditProduct = () => {
         PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
       >
         <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
-          Add New Category
+          Add New Brand
         </DialogTitle>
         <Divider sx={{ mx: 3 }} />
         <DialogContent sx={{ py: 3 }}>
           {catError && <Alert severity="error" sx={{ mb: 2 }}>{catError}</Alert>}
           <Stack spacing={3}>
             <TextField
-              label="Category Name"
+              label="Brand Name"
+              variant="standard"
+              autoComplete="off"
+              required
+              fullWidth
+              size="small"
+              value={catForm.name}
+              onChange={(e) => setCatForm({ ...catForm, name: e.target.value })}
+            />
+            <TextField
+              label="Description"
+              variant="standard"
+              autoComplete="off"
+              fullWidth
+              multiline
+              rows={2}
+              size="small"
+                  borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
+                  boxSizing: 'border-box'
+                }}
+              >
+                <FormControl fullWidth variant="standard">
+                  <Select
+                    value={formData.unit}
+                    onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                    disableUnderline
+                    style={{ fontSize: '0.9rem' }}
+                  >
+                    <MenuItem value="pcs">pcs</MenuItem>
+                    <MenuItem value="box">box</MenuItem>
+                    <MenuItem value="kg">kg</MenuItem>
+                    <MenuItem value="liter">liter</MenuItem>
+                    <MenuItem value="dozen">dozen</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
+              {/* Low Stock Alert */}
+              <Box
+                sx={{
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
+                  p: 1.5,
+                  borderRight: { md: '1px solid #cbd5e1' },
+                  borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
+                  boxSizing: 'border-box'
+                }}
+              >
+                <TextField
+                  placeholder="Low Stock Alert"
+                  name="lowStockAlert"
+                  type="number"
+                  fullWidth
+                  variant="standard"
+                  value={formData.lowStockAlert}
+                  onChange={(e) => setFormData({ ...formData, lowStockAlert: e.target.value })}
+                  InputProps={{ disableUnderline: true, style: { fontSize: '0.9rem' } }}
+                />
+              </Box>
+
+              {/* Supplier Price */}
+              <Box
+                sx={{
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
+                  p: 1.5,
+                  borderRight: { md: '1px solid #cbd5e1' },
+                  borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
+                  boxSizing: 'border-box'
+                }}
+              >
+                <TextField
+                  placeholder="Supplier Price"
+                  name="supplierPrice"
+                  type="number"
+                  fullWidth
+                  variant="standard"
+                  value={formData.supplierPrice}
+                  onChange={(e) => setFormData({ ...formData, supplierPrice: e.target.value })}
+                  InputProps={{ disableUnderline: true, style: { fontSize: '0.9rem' } }}
+                />
+              </Box>
+
+              {/* Sell Price */}
+              <Box
+                sx={{
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
+                  p: 1.5,
+                  borderRight: { md: '1px solid #cbd5e1' },
+                  borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
+                  boxSizing: 'border-box'
+                }}
+              >
+                <TextField
+                  placeholder="Sell Price"
+                  name="price"
+                  type="number"
+                  fullWidth
+                  required
+                  variant="standard"
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  InputProps={{ disableUnderline: true, style: { fontSize: '0.9rem' } }}
+                />
+              </Box>
+
+              {/* Model */}
+              <Box
+                sx={{
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
+                  p: 1.5,
+                  borderRight: { md: '1px solid #cbd5e1' },
+                  borderBottom: { xs: '1px solid #cbd5e1', md: 'none' },
+                  boxSizing: 'border-box'
+                }}
+              >
+                <TextField
+                  placeholder="Model"
+                  name="model"
+                  fullWidth
+                  variant="standard"
+                  value={formData.model}
+                  onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                  InputProps={{ disableUnderline: true, style: { fontSize: '0.9rem' } }}
+                />
+              </Box>
+
+              {/* Suppliers */}
+              <Box
+                sx={{
+                  width: { xs: '100%', md: 'calc(100% / 7)' },
+                  p: 1.5,
+                  boxSizing: 'border-box'
+                }}
+              >
+                <FormControl fullWidth variant="standard">
+                  <Select
+                    value={formData.supplierId}
+                    onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
+                    displayEmpty
+                    disableUnderline
+                    style={{ fontSize: '0.9rem' }}
+                  >
+                    <MenuItem value="">
+                      <em>Select supplier (Optional)</em>
+                    </MenuItem>
+                    {suppliers.map((sup) => (
+                      <MenuItem key={sup.id} value={sup.id}>
+                        {sup.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+          </Box>
+
+          {/* Action Buttons */}
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={loading}
+              sx={{ borderRadius: 1.5, px: 4, py: 1.25, textTransform: 'none', fontWeight: 600, fontSize: '0.9rem', boxShadow: 'none' }}
+            >
+              {loading ? 'Saving...' : 'Save Changes'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="inherit"
+              disabled={loading}
+              onClick={() => navigate('/products')}
+              sx={{ borderRadius: 1.5, px: 4, py: 1.25, textTransform: 'none', fontWeight: 600, fontSize: '0.9rem', borderColor: '#cbd5e1' }}
+            >
+              Cancel
+            </Button>
+          </Box>
+        </form>
+        )}
+      </Card>
+
+      {/* Category Creation Sub-Dialog */}
+      <Dialog
+        open={openCategoryDialog}
+        onClose={() => setOpenCategoryDialog(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+          Add New Brand
+        </DialogTitle>
+        <Divider sx={{ mx: 3 }} />
+        <DialogContent sx={{ py: 3 }}>
+          {catError && <Alert severity="error" sx={{ mb: 2 }}>{catError}</Alert>}
+          <Stack spacing={3}>
+            <TextField
+              label="Brand Name"
               variant="standard"
               autoComplete="off"
               required
@@ -835,6 +1058,109 @@ const EditProduct = () => {
             sx={{ borderRadius: 1.5, boxShadow: 'none' }}
           >
             {catLoading ? 'Creating...' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* AVCO Calculator Dialog */}
+      <Dialog
+        open={openAvcoDialog}
+        onClose={() => setOpenAvcoDialog(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2.5, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+          Average Cost (AVCO) Calculator
+        </DialogTitle>
+        <DialogContent sx={{ py: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Naya stock aane par weighted average cost calculate karein taake profit reporting accurate rahe.
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={6}>
+              <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748b' }}>Current Stock</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700, color: '#0f172a', mt: 0.5 }}>
+                {originalStock} {formData.unit}
+              </Typography>
+            </Grid>
+            <Grid item xs={6}>
+              <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748b' }}>Current Cost</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700, color: '#0f172a', mt: 0.5 }}>
+                Rs. {originalCost.toFixed(2)}
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Divider sx={{ my: 1 }} />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                label="New Purchased Quantity"
+                type="number"
+                fullWidth
+                size="small"
+                value={avcoQty}
+                onChange={(e) => setAvcoQty(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="New Supplier Price (per piece)"
+                type="number"
+                fullWidth
+                size="small"
+                value={avcoCost}
+                onChange={(e) => setAvcoCost(e.target.value)}
+              />
+            </Grid>
+          </Grid>
+
+          {/* Results Preview */}
+          {avcoQty && avcoCost && (
+            <Box sx={{ mt: 3, p: 2, bgcolor: '#f8fafc', borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#475569', mb: 1 }}>
+                Calculated Preview:
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">Total New Stock:</Typography>
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                  {originalStock + parseFloat(avcoQty)} {formData.unit}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="caption" color="text.secondary">New Weighted Average Cost:</Typography>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: '#16a34a' }}>
+                  Rs. {((originalStock * originalCost + parseFloat(avcoQty) * parseFloat(avcoCost)) / (originalStock + parseFloat(avcoQty))).toFixed(2)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setOpenAvcoDialog(false)} color="inherit" sx={{ textTransform: 'none' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!avcoQty || !avcoCost}
+            onClick={() => {
+              const qty = parseFloat(avcoQty) || 0;
+              const cost = parseFloat(avcoCost) || 0;
+              const totalStock = originalStock + qty;
+              const weightedCost = ((originalStock * originalCost) + (qty * cost)) / totalStock;
+              
+              setFormData({
+                ...formData,
+                stock: String(totalStock),
+                supplierPrice: String(weightedCost.toFixed(2))
+              });
+              setOpenAvcoDialog(false);
+            }}
+            sx={{ textTransform: 'none', borderRadius: 1.5 }}
+          >
+            Apply to Form
           </Button>
         </DialogActions>
       </Dialog>

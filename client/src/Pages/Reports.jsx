@@ -414,13 +414,13 @@ const Reports = () => {
           <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1.5 }}>
             <Box sx={{ px: 3, py: 2.5, borderBottom: '1px solid #e2e8f0' }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a' }}>
-                Tied-Up Capital Valuation by Category
+                Tied-Up Capital Valuation by Brand
               </Typography>
             </Box>
             <CardContent sx={{ p: 3 }}>
               {Object.keys(categoryAssets).length === 0 ? (
                 <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
-                  No stock items or categories registered.
+                  No stock items or brands registered.
                 </Typography>
               ) : (
                 <Grid container spacing={3}>

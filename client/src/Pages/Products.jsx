@@ -20,7 +20,13 @@ import {
   FormControl,
   Select,
   MenuItem,
+  Paper,
+  TextField,
+  InputLabel,
 } from '@mui/material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
@@ -35,12 +41,17 @@ import {
 } from '@mui/icons-material';
 import DataTable from '../Components/DataTable';
 import Barcode from 'react-barcode';
+import dayjs from 'dayjs';
 
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost') ? import.meta.env.VITE_API_URL : window.location.origin);
 
 const Products = () => {
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
+  const [currency, setCurrency] = useState('Rs.');
+  const [dateFilter, setDateFilter] = useState('all');
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -60,6 +71,9 @@ const Products = () => {
   const [viewLoading, setViewLoading] = useState(false);
 
   const handleViewClick = async (product) => {
+    setDateFilter('all');
+    setCustomStartDate(null);
+    setCustomEndDate(null);
     setViewProduct(product);
     setOpenViewDialog(true);
     setViewLoading(true);
@@ -380,8 +394,27 @@ const Products = () => {
     }
   }, [navigate, getToken]);
 
+  const fetchSettings = useCallback(async () => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/api/settings`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.currency) {
+          setCurrency(data.currency);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch settings:', err);
+    }
+  }, [getToken]);
+
   useEffect(() => {
     fetchProducts();
+    fetchSettings();
   }, [fetchProducts]);
 
   const handleBulkDelete = async (selectedIds) => {
@@ -553,7 +586,7 @@ const Products = () => {
     { id: 'unit', label: 'Unit', sortable: true },
     {
       id: 'category',
-      label: 'Category',
+      label: 'Brand',
       sortable: false,
       render: (row) => row.category?.name || '-'
     },
@@ -635,7 +668,7 @@ const Products = () => {
       doc.text(`Total Products: ${products.length}   |   Total Stock Qty: ${totalStock}   |   Total Retail Value: Rs. ${totalRetailValue.toFixed(2)}`, 14, 34);
 
       // Prepare Table Data
-      const tableColumn = ["#", "Name", "Barcode", "Price", "Stock", "Unit", "Category", "Expiry Date"];
+      const tableColumn = ["#", "Name", "Barcode", "Price", "Stock", "Unit", "Brand", "Expiry Date"];
       const tableRows = [];
 
       products.forEach((prod, index) => {
@@ -1017,8 +1050,13 @@ const Products = () => {
       {/* View Product Details Dialog */}
       <Dialog
         open={openViewDialog}
-        onClose={() => setOpenViewDialog(false)}
-        maxWidth="md"
+        onClose={() => {
+          setOpenViewDialog(false);
+          setDateFilter('all');
+          setCustomStartDate(null);
+          setCustomEndDate(null);
+        }}
+        maxWidth="lg"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2.5, p: 1 } }}
       >
@@ -1154,7 +1192,7 @@ const Products = () => {
                         <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.25 }}>{viewProduct.model || '-'}</Typography>
                       </Grid>
                       <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Category</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Brand</Typography>
                         <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.25 }}>{viewProduct.category?.name || '-'}</Typography>
                       </Grid>
                       <Grid item xs={12} sm={6}>
@@ -1237,6 +1275,202 @@ const Products = () => {
                     </Grid>
                   </Box>
                 </Stack>
+              </Grid>
+              
+              {/* Sales Summary & History Section */}
+              <Grid item xs={12} sx={{ width: '100%' }}>
+                <Box sx={{ mt: 2, width: '100%' }}>
+                  <Divider sx={{ mb: 3 }} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#475569', mb: 2, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 0.5 }}>
+                    Sales Summary & History
+                  </Typography>
+
+                  {/* Date Filter Bar */}
+                  <LocalizationProvider dateAdapter={AdapterDayjs}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5, mb: 3, alignItems: 'center', bgcolor: '#f8fafc', p: 2.5, borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
+                      <FormControl size="small" sx={{ minWidth: 180 }}>
+                        <InputLabel id="product-date-filter-label">Period</InputLabel>
+                        <Select
+                          labelId="product-date-filter-label"
+                          value={dateFilter}
+                          label="Period"
+                          onChange={(e) => setDateFilter(e.target.value)}
+                        >
+                          <MenuItem value="all">All Time</MenuItem>
+                          <MenuItem value="today">Today</MenuItem>
+                          <MenuItem value="yesterday">Yesterday</MenuItem>
+                          <MenuItem value="thisweek">This Week</MenuItem>
+                          <MenuItem value="thismonth">This Month</MenuItem>
+                          <MenuItem value="30days">Last 30 Days</MenuItem>
+                          <MenuItem value="365days">Last 365 Days</MenuItem>
+                          <MenuItem value="custom">Custom Range</MenuItem>
+                        </Select>
+                      </FormControl>
+
+                      {dateFilter === 'custom' && (
+                        <>
+                          <DatePicker
+                            label="Start Date"
+                            value={customStartDate}
+                            onChange={(newValue) => setCustomStartDate(newValue)}
+                            slotProps={{ textField: { size: 'small', sx: { width: 170 } } }}
+                          />
+                          <DatePicker
+                            label="End Date"
+                            value={customEndDate}
+                            onChange={(newValue) => setCustomEndDate(newValue)}
+                            slotProps={{ textField: { size: 'small', sx: { width: 170 } } }}
+                          />
+                        </>
+                      )}
+                    </Box>
+                  </LocalizationProvider>
+
+                  {/* Filter Calculations */}
+                  {(() => {
+                    const filteredSaleItems = (viewProduct.saleItems || []).filter(item => {
+                      if (!item.sale?.createdAt) return false;
+                      const saleDate = dayjs(item.sale.createdAt);
+                      
+                      if (dateFilter === 'today') {
+                        return saleDate.isSame(dayjs(), 'day');
+                      }
+                      if (dateFilter === 'yesterday') {
+                        return saleDate.isSame(dayjs().subtract(1, 'day'), 'day');
+                      }
+                      if (dateFilter === 'thisweek') {
+                        return saleDate.isAfter(dayjs().startOf('week').subtract(1, 'day')) && saleDate.isBefore(dayjs().endOf('day'));
+                      }
+                      if (dateFilter === 'thismonth') {
+                        return saleDate.isSame(dayjs(), 'month');
+                      }
+                      if (dateFilter === '30days') {
+                        return saleDate.isAfter(dayjs().subtract(30, 'day').startOf('day')) && saleDate.isBefore(dayjs().endOf('day'));
+                      }
+                      if (dateFilter === '365days') {
+                        return saleDate.isAfter(dayjs().subtract(365, 'day').startOf('day')) && saleDate.isBefore(dayjs().endOf('day'));
+                      }
+                      if (dateFilter === 'custom') {
+                        if (customStartDate && saleDate.isBefore(dayjs(customStartDate).startOf('day'))) return false;
+                        if (customEndDate && saleDate.isAfter(dayjs(customEndDate).endOf('day'))) return false;
+                        return true;
+                      }
+                      return true; // 'all'
+                    });
+
+                    const totalUnitsFiltered = filteredSaleItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                    const revenueFiltered = filteredSaleItems.reduce((sum, item) => sum + (item.total || 0), 0);
+                    const costFiltered = totalUnitsFiltered * (viewProduct.supplierPrice || 0);
+                    const profitFiltered = revenueFiltered - costFiltered;
+                    const discountFiltered = filteredSaleItems.reduce((sum, item) => sum + (parseFloat(item.discount || 0)), 0);
+
+                    return (
+                      <>
+                        {/* Stats Cards */}
+                        <Grid container spacing={2} sx={{ mb: 3 }}>
+                          <Grid item xs={12} sm={4} md={4}>
+                            <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">Total Units Sold</Typography>
+                              <Typography variant="h6" sx={{ fontWeight: 700, color: '#0f172a' }}>
+                                {totalUnitsFiltered} {viewProduct.unit || 'pcs'}
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                          <Grid item xs={12} sm={4} md={4}>
+                            <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">Total Discount Given</Typography>
+                              <Typography variant="h6" sx={{ fontWeight: 700, color: '#d97706' }}>
+                                {currency} {discountFiltered.toFixed(2)}
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                          <Grid item xs={12} sm={4} md={4}>
+                            <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">Total Profit Earned</Typography>
+                              <Typography variant="h6" sx={{ 
+                                fontWeight: 700, 
+                                color: profitFiltered >= 0 ? '#16a34a' : '#b91c1c'
+                              }}>
+                                {currency} {profitFiltered.toFixed(2)}
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                        </Grid>
+
+                        {/* Sales Table */}
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#475569', mb: 1.5, fontSize: '0.75rem' }}>
+                          Recent Sales Transactions
+                        </Typography>
+                        
+                        {viewLoading ? (
+                          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>Loading sales history...</Typography>
+                        ) : filteredSaleItems.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary" sx={{ py: 2, fontStyle: 'italic' }}>
+                            No sales recorded for this product in the selected period.
+                          </Typography>
+                        ) : (
+                          <Box sx={{ width: '100%', maxHeight: '250px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 1.5 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: '"Inter", sans-serif', fontSize: '0.85rem' }}>
+                              <thead>
+                                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                                  <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Date & Time</th>
+                                  <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Receipt No</th>
+                                  <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Customer</th>
+                                  <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569', textAlign: 'right' }}>Qty</th>
+                                  <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569', textAlign: 'right' }}>Retail Price</th>
+                                  <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569', textAlign: 'right' }}>Discount</th>
+                                  <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569', textAlign: 'right' }}>Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {[...filteredSaleItems]
+                                  .sort((a, b) => new Date(b.sale?.createdAt) - new Date(a.sale?.createdAt))
+                                  .map((item, idx) => (
+                                    <tr key={item.id} style={{ borderBottom: idx < filteredSaleItems.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                      <td style={{ padding: '10px 14px', color: '#0f172a' }}>
+                                        {item.sale?.createdAt ? new Date(item.sale.createdAt).toLocaleString() : '-'}
+                                      </td>
+                                      <td style={{ padding: '10px 14px', color: '#64748b', fontWeight: 500 }}>
+                                        #{item.sale?.receiptNo || '-'}
+                                      </td>
+                                      <td style={{ padding: '10px 14px', color: '#0f172a' }}>
+                                        {item.sale?.customer ? (
+                                          <Box>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                                              {item.sale.customer.name}
+                                            </Typography>
+                                            {item.sale.customer.phone && (
+                                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                                {item.sale.customer.phone}
+                                              </Typography>
+                                            )}
+                                          </Box>
+                                        ) : (
+                                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>Walk-in Customer</Typography>
+                                        )}
+                                      </td>
+                                      <td style={{ padding: '10px 14px', color: '#0f172a', textAlign: 'right', fontWeight: 600 }}>
+                                        {item.quantity} {viewProduct.unit || 'pcs'}
+                                      </td>
+                                      <td style={{ padding: '10px 14px', color: '#0f172a', textAlign: 'right' }}>
+                                        {currency} {parseFloat(item.price || 0).toFixed(2)}
+                                      </td>
+                                      <td style={{ padding: '10px 14px', color: '#b91c1c', textAlign: 'right' }}>
+                                        {item.discount > 0 ? `${currency} ${parseFloat(item.discount).toFixed(2)}` : '-'}
+                                      </td>
+                                      <td style={{ padding: '10px 14px', color: '#0f172a', textAlign: 'right', fontWeight: 700 }}>
+                                        {currency} {parseFloat(item.total || 0).toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </Box>
+                        )}
+                      </>
+                    );
+                  })()}
+                </Box>
               </Grid>
             </Grid>
           ) : null}

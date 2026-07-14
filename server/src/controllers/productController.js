@@ -212,7 +212,16 @@ const getProductById = async (req, res) => {
       include: {
         category: { select: { id: true, name: true } },
         warehouse: { select: { id: true, name: true } },
-        supplier: { select: { id: true, name: true } }
+        supplier: { select: { id: true, name: true } },
+        saleItems: {
+          include: {
+            sale: {
+              include: {
+                customer: { select: { id: true, name: true, phone: true } }
+              }
+            }
+          }
+        }
       }
     });
     if (!product) return res.status(404).json({ message: 'Product not found' });

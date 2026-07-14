@@ -99,9 +99,9 @@ const Categories = () => {
       }
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to delete categories');
+      if (!response.ok) throw new Error(data.message || 'Failed to delete brands');
 
-      setSuccessMsg('Category(s) deleted successfully!');
+      setSuccessMsg('Brand(s) deleted successfully!');
       fetchCategories();
       setOpenDeleteDialog(false);
       setDeleteIds([]);
@@ -126,7 +126,7 @@ const Categories = () => {
     setSuccessMsg('');
 
     if (!formData.name.trim()) {
-      setError('Please enter a category name');
+      setError('Please enter a brand name');
       return;
     }
 
@@ -156,9 +156,9 @@ const Categories = () => {
       }
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || `Failed to ${isEdit ? 'update' : 'add'} category`);
+      if (!response.ok) throw new Error(data.message || `Failed to ${isEdit ? 'update' : 'add'} brand`);
 
-      setSuccessMsg(isEdit ? 'Category updated successfully!' : 'Category added successfully!');
+      setSuccessMsg(isEdit ? 'Brand updated successfully!' : 'Brand added successfully!');
       setFormData({ name: '', description: '' });
       setEditId(null);
       fetchCategories();
@@ -171,7 +171,7 @@ const Categories = () => {
   };
 
   const columns = [
-    { id: 'name', label: 'Category Name', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
+    { id: 'name', label: 'Brand Name', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
     { id: 'description', label: 'Description', sortable: false },
     {
       id: 'actions',
@@ -204,7 +204,7 @@ const Categories = () => {
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
-          Categories
+          Brands
         </Typography>
       </Box>
       {error && <Alert severity="error">{error}</Alert>}
@@ -216,17 +216,17 @@ const Categories = () => {
           <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 2, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', p: 3, height: 'fit-content' }}>
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0f172a' }}>
-                {editId !== null ? 'Edit Category' : 'Add Category'}
+                {editId !== null ? 'Edit Brand' : 'Add Brand'}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                {editId !== null ? 'Modify category details below.' : 'Create a new product category.'}
+                {editId !== null ? 'Modify brand details below.' : 'Create a new product brand.'}
               </Typography>
             </Box>
 
             <form onSubmit={handleFormSubmit}>
               <Stack spacing={3}>
                 <TextField
-                  label="Category Name"
+                  label="Brand Name"
                   name="name"
 
                   variant="standard"
@@ -264,7 +264,7 @@ const Categories = () => {
                     fullWidth
                     sx={{ borderRadius: 1.5, py: 1, textTransform: 'none', fontWeight: 600 }}
                   >
-                    {loading ? (editId !== null ? 'Saving...' : 'Adding...') : (editId !== null ? 'Save Changes' : 'Add Category')}
+                    {loading ? (editId !== null ? 'Saving...' : 'Adding...') : (editId !== null ? 'Save Changes' : 'Add Brand')}
                   </Button>
                   {editId !== null && (
                     <Button
@@ -297,7 +297,7 @@ const Categories = () => {
               selected={selected}
               onSelectedChange={setSelected}
               bulkActions={bulkActions}
-              searchPlaceholder="Search categories..."
+              searchPlaceholder="Search brands..."
             />
           </Card>
         </Box>
@@ -317,7 +317,7 @@ const Categories = () => {
         <Divider sx={{ mx: 3 }} />
         <DialogContent sx={{ py: 3 }}>
           <Typography variant="body2" sx={{ color: '#475569' }}>
-            Are you sure you want to delete {deleteIds.length} selected category(s)? This action cannot be undone.
+            Are you sure you want to delete {deleteIds.length} selected brand(s)? This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

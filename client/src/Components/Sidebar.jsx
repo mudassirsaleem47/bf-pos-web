@@ -42,7 +42,7 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
     { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
     { label: 'POS (Cashier)', path: '/pos', icon: ShoppingCartIcon },
     { label: 'Products', path: '/products', icon: ProductsIcon },
-    { label: 'Categories', path: '/categories', icon: CategoriesIcon },
+    { label: 'Brands', path: '/categories', icon: CategoriesIcon },
     { label: 'Suppliers', path: '/suppliers', icon: SuppliersIcon },
     { label: 'Finance', path: '/receivables-payables', icon: LoanIcon },
     { label: 'Customers', path: '/customers', icon: CustomersIcon },

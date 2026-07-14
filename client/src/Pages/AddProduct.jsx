@@ -313,14 +313,14 @@ const AddProduct = () => {
 
               <Stack direction="row" spacing={1} alignItems="flex-end">
                 <FormControl variant="standard" fullWidth size="small">
-                  <InputLabel id="category-select-label">Categories</InputLabel>
+                  <InputLabel id="category-select-label">Brands</InputLabel>
                   <Select
                     labelId="category-select-label"
                     value={formData.categoryId}
                     onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
                   >
                     <MenuItem value="">
-                      <em>Select Categories (Optional)</em>
+                      <em>Select Brand (Optional)</em>
                     </MenuItem>
                     {categories.map((cat) => (
                       <MenuItem key={cat.id} value={cat.id}>
@@ -726,14 +726,14 @@ const AddProduct = () => {
         PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
       >
         <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
-          Add New Category
+          Add New Brand
         </DialogTitle>
         <Divider sx={{ mx: 3 }} />
         <DialogContent sx={{ py: 3 }}>
           {catError && <Alert severity="error" sx={{ mb: 2 }}>{catError}</Alert>}
           <Stack spacing={3}>
             <TextField
-              label="Category Name"
+              label="Brand Name"
               variant="standard"
               autoComplete="off"
               required
