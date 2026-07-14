@@ -47,11 +47,9 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
     { label: 'Finance', path: '/receivables-payables', icon: LoanIcon },
     { label: 'Customers', path: '/customers', icon: CustomersIcon },
     { label: 'Warehouse', path: '/warehouse', icon: WarehouseIcon },
-    { label: 'Suppliers Invoice', path: '/suppliers-invoice', icon: SuppliersInvoiceIcon },
     { label: 'Expired Products', path: '/expired-products', icon: ExpiredProductsIcon },
     { label: 'Dead Stock', path: '/dead-stock', icon: DeadStockIcon },
     { label: 'Transaction', path: '/transaction', icon: TransactionIcon },
-    { label: 'Invoice', path: '/invoice', icon: InvoiceIcon },
     { label: 'Expenses', path: '/expenses', icon: ExpensesIcon },
     { label: 'Staff', path: '/staff', icon: CustomersIcon },
     { label: 'Reports', path: '/reports', icon: ReportsIcon }, // Looks like anchor/stats in mockup

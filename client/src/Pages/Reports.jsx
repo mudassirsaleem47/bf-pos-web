@@ -15,7 +15,8 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  IconButton
 } from '@mui/material';
 import {
   BarChart as ChartIcon,
@@ -23,8 +24,12 @@ import {
   TrendingUp as ProfitIcon,
   ArrowUpward as SalesIcon,
   ArrowDownward as ExpenseIcon,
-  ShoppingBag as ProductsIcon
+  ShoppingBag as ProductsIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import dayjs from 'dayjs';
@@ -42,6 +47,62 @@ const Reports = () => {
   const [error, setError] = useState('');
   const [currency, setCurrency] = useState('Rs.');
   const [storeName, setStoreName] = useState('BF Makeup');
+
+  // Date Filter States
+  const [dateFilter, setDateFilter] = useState('365days'); // Default to 365 days
+  const [customStartDate, setCustomStartDate] = useState(dayjs().subtract(30, 'day'));
+  const [customEndDate, setCustomEndDate] = useState(dayjs());
+
+  // Get start and end date based on dateFilter selection
+  const getFilterDateRange = () => {
+    const now = dayjs();
+    let start = null;
+    let end = now.endOf('day');
+
+    switch (dateFilter) {
+      case 'today':
+        start = now.startOf('day');
+        end = now.endOf('day');
+        break;
+      case 'yesterday':
+        start = now.subtract(1, 'day').startOf('day');
+        end = now.subtract(1, 'day').endOf('day');
+        break;
+      case 'thisweek':
+        start = now.startOf('week');
+        end = now.endOf('week');
+        break;
+      case 'thismonth':
+        start = now.startOf('month');
+        end = now.endOf('month');
+        break;
+      case '30days':
+        start = now.subtract(30, 'day').startOf('day');
+        break;
+      case '365days':
+        start = now.subtract(365, 'day').startOf('day');
+        break;
+      case 'custom':
+        start = customStartDate ? dayjs(customStartDate).startOf('day') : null;
+        end = customEndDate ? dayjs(customEndDate).endOf('day') : null;
+        break;
+      case 'all':
+      default:
+        start = null;
+        end = null;
+        break;
+    }
+    return { start, end };
+  };
+
+  const filterByDate = (dateVal) => {
+    if (!dateVal) return false;
+    const { start, end } = getFilterDateRange();
+    const d = dayjs(dateVal);
+    if (start && d.isBefore(start)) return false;
+    if (end && d.isAfter(end)) return false;
+    return true;
+  };
 
   const getToken = () => {
     const token = localStorage.getItem('token');
@@ -102,9 +163,13 @@ const Reports = () => {
     fetchReportData();
   }, []);
 
+  // Filtered Datasets based on Date Filter
+  const filteredSales = sales.filter(s => filterByDate(s.createdAt));
+  const filteredExpenses = expenses.filter(e => filterByDate(e.date || e.createdAt));
+
   // ── Stats Calculations ─────────────────────────────────────────
   // Gross Sales is the sum of (item.price * item.quantity) before any discounts, filtered by brand if active
-  const grossSales = sales.reduce((sum, s) => {
+  const grossSales = filteredSales.reduce((sum, s) => {
     const itemGross = (s.items || []).reduce((itemSum, item) => {
       const product = products.find(p => p.id === item.productId);
       if (selectedCategory !== 'all' && product?.categoryId !== selectedCategory) {
@@ -116,7 +181,7 @@ const Reports = () => {
   }, 0);
 
   // Total Discounts is the sum of transaction discount (proportional) + item discounts, filtered by brand
-  const totalDiscounts = sales.reduce((sum, s) => {
+  const totalDiscounts = filteredSales.reduce((sum, s) => {
     const saleTotal = (s.items || []).reduce((itemSum, item) => itemSum + item.total, 0) || 1;
     const brandDiscounts = (s.items || []).reduce((itemSum, item) => {
       const product = products.find(p => p.id === item.productId);
@@ -139,7 +204,7 @@ const Reports = () => {
   }, 0);
 
   // Total Buying Price is the cost of goods sold (COGS)
-  const totalBuyingPrice = sales.reduce((sum, s) => {
+  const totalBuyingPrice = filteredSales.reduce((sum, s) => {
     const saleCost = (s.items || []).reduce((itemSum, item) => {
       const product = products.find(p => p.id === item.productId);
       if (selectedCategory !== 'all' && product?.categoryId !== selectedCategory) {
@@ -152,14 +217,14 @@ const Reports = () => {
   }, 0);
 
   // Store operating expenses (only show if all brands are selected; for a specific brand, operating expenses are 0)
-  const totalExpenses = selectedCategory === 'all' ? expenses.reduce((sum, ex) => sum + ex.amount, 0) : 0;
+  const totalExpenses = selectedCategory === 'all' ? filteredExpenses.reduce((sum, ex) => sum + ex.amount, 0) : 0;
 
   // Final Profit = Gross Sales - Total Discounts - Total Buying Price - Total Expenses
   const finalProfit = grossSales - totalDiscounts - totalBuyingPrice - totalExpenses;
 
   // Calculate Top Selling Products
   const productSalesCount = {};
-  sales.forEach(sale => {
+  filteredSales.forEach(sale => {
     (sale.items || []).forEach(item => {
       const product = products.find(p => p.id === item.productId);
       if (selectedCategory !== 'all' && product?.categoryId !== selectedCategory) {
@@ -189,7 +254,7 @@ const Reports = () => {
   // Calculate Expense Categories breakdown (expenses are store-wide, so only show when 'all' is selected)
   const expenseCategories = {};
   if (selectedCategory === 'all') {
-    expenses.forEach(ex => {
+    filteredExpenses.forEach(ex => {
       expenseCategories[ex.category] = (expenseCategories[ex.category] || 0) + ex.amount;
     });
   }
@@ -309,35 +374,99 @@ const Reports = () => {
             Consolidated operating statistics, top revenue streams, cost structures, and printable audits.
           </Typography>
         </Box>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ width: { xs: '100%', md: 'auto' } }}>
-          {/* Brand Filter */}
-          <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
-            <InputLabel id="brand-filter-label">Filter by Brand</InputLabel>
-            <Select
-              labelId="brand-filter-label"
-              value={selectedCategory}
-              label="Filter by Brand"
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              sx={{ bgcolor: '#ffffff', borderRadius: 2 }}
-            >
-              <MenuItem value="all"><em>All Brands</em></MenuItem>
-              {categories.map((cat) => (
-                <MenuItem key={cat.id} value={cat.id}>
-                  {cat.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          <Button
-            variant="contained"
-            startIcon={<PrintIcon />}
-            onClick={handlePrintExecutiveReport}
-            sx={{ borderRadius: 2, height: 40, width: { xs: '100%', sm: 'auto' } }}
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
+            alignItems="center"
+            sx={{ width: { xs: '100%', md: 'auto' }, flexWrap: 'wrap', gap: { xs: 1, sm: 0 } }}
           >
-            Executive Summary Report
-          </Button>
-        </Stack>
+            {/* Date Filter Dropdown */}
+            <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
+              <InputLabel id="date-filter-label">Period</InputLabel>
+              <Select
+                labelId="date-filter-label"
+                value={dateFilter}
+                label="Period"
+                onChange={(e) => setDateFilter(e.target.value)}
+                sx={{ bgcolor: '#ffffff', borderRadius: 2 }}
+              >
+                <MenuItem value="today">Today</MenuItem>
+                <MenuItem value="yesterday">Yesterday</MenuItem>
+                <MenuItem value="thisweek">This Week</MenuItem>
+                <MenuItem value="thismonth">This Month</MenuItem>
+                <MenuItem value="30days">Last 30 Days</MenuItem>
+                <MenuItem value="365days">Last 365 Days</MenuItem>
+                <MenuItem value="all">All Time</MenuItem>
+                <MenuItem value="custom">Custom Range</MenuItem>
+              </Select>
+            </FormControl>
+
+            {/* Custom Date Pickers */}
+            {dateFilter === 'custom' && (
+              <>
+                <DatePicker
+                  label="Start Date"
+                  value={customStartDate}
+                  onChange={(newValue) => setCustomStartDate(newValue)}
+                  slotProps={{ textField: { size: 'small', sx: { width: { xs: '100%', sm: 150 }, bgcolor: '#ffffff', borderRadius: 2 } } }}
+                />
+                <DatePicker
+                  label="End Date"
+                  value={customEndDate}
+                  onChange={(newValue) => setCustomEndDate(newValue)}
+                  slotProps={{ textField: { size: 'small', sx: { width: { xs: '100%', sm: 150 }, bgcolor: '#ffffff', borderRadius: 2 } } }}
+                />
+              </>
+            )}
+
+            {/* Brand Filter */}
+            <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
+              <InputLabel id="brand-filter-label">Filter by Brand</InputLabel>
+              <Select
+                labelId="brand-filter-label"
+                value={selectedCategory}
+                label="Filter by Brand"
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                sx={{ bgcolor: '#ffffff', borderRadius: 2 }}
+              >
+                <MenuItem value="all"><em>All Brands</em></MenuItem>
+                {categories.map((cat) => (
+                  <MenuItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* Refresh Button */}
+            <IconButton
+              onClick={fetchReportData}
+              size="small"
+              sx={{
+                color: '#475569',
+                bgcolor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                '&:hover': { bgcolor: '#f8fafc' },
+                alignSelf: { xs: 'flex-end', sm: 'auto' },
+                height: 40,
+                width: 40,
+                borderRadius: 2
+              }}
+            >
+              <RefreshIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+
+            <Button
+              variant="contained"
+              startIcon={<PrintIcon />}
+              onClick={handlePrintExecutiveReport}
+              sx={{ borderRadius: 2, height: 40, width: { xs: '100%', sm: 'auto' } }}
+            >
+              Executive Summary Report
+            </Button>
+          </Stack>
+        </LocalizationProvider>
       </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -349,7 +478,7 @@ const Reports = () => {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>TOTAL GROSS REVENUE</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>Total Sale</Typography>
                   <Typography variant="h5" sx={{ fontWeight: 800, mt: 1 }}>
                     {currency} {grossSales.toFixed(2)}
                   </Typography>
@@ -365,7 +494,7 @@ const Reports = () => {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>TOTAL STORE EXPENSES</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>Total Expenses</Typography>
                   <Typography variant="h5" sx={{ fontWeight: 800, mt: 1 }}>
                     {currency} {totalExpenses.toFixed(2)}
                   </Typography>
@@ -381,7 +510,7 @@ const Reports = () => {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>FINAL PROFIT</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>Net Profit</Typography>
                   <Typography variant="h5" sx={{ fontWeight: 800, mt: 1 }}>
                     {currency} {finalProfit.toFixed(2)}
                   </Typography>
@@ -397,7 +526,7 @@ const Reports = () => {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>DISCOUNTS OFFERED</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>Total Discounts</Typography>
                   <Typography variant="h5" sx={{ fontWeight: 800, mt: 1 }}>
                     {currency} {totalDiscounts.toFixed(2)}
                   </Typography>
@@ -461,7 +590,7 @@ const Reports = () => {
           <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1.5, height: '100%' }}>
             <Box sx={{ px: 3, py: 2.5, borderBottom: '1px solid #e2e8f0' }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a' }}>
-                Operational Expenses Breakdown
+                Total Expenses
               </Typography>
             </Box>
             <CardContent sx={{ p: 3 }}>
