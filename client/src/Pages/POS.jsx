@@ -78,7 +78,7 @@ const POS = () => {
   const [productInputValue, setProductInputValue] = useState('');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
-  const [discountPercent, setDiscountPercent] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState(0);
   const [cash, setCash] = useState('');
   const [settings, setSettings] = useState({
     storeName: 'My Store',
@@ -428,6 +428,7 @@ const POS = () => {
         </div>
         <div style="color: #555; font-size: 12px; margin-top: 2px;">
           ${item.qty || item.quantity} x ${settings.currency}${parseFloat(item.price).toFixed(2)}
+          ${parseFloat(item.discount || 0) > 0 ? ` (Disc: -${settings.currency}${parseFloat(item.discount).toFixed(2)})` : ''}
         </div>
       </div>
     `).join('');
@@ -827,8 +828,6 @@ const POS = () => {
     };
   }, [products]);
 
-
-
   const addToCart = (product, qty = 1) => {
     const parsedQty = parseFloat(qty) || 1;
     setCart((prevCart) => {
@@ -836,10 +835,11 @@ const POS = () => {
       if (existingIndex > -1) {
         const newCart = [...prevCart];
         const newQty = newCart[existingIndex].qty + parsedQty;
+        const itemDisc = newCart[existingIndex].discount || 0;
         newCart[existingIndex] = {
           ...newCart[existingIndex],
           qty: newQty,
-          total: newQty * product.price,
+          total: Math.max(0, (newQty * product.price) - itemDisc),
         };
         return newCart;
       } else {
@@ -851,6 +851,7 @@ const POS = () => {
             barcode: product.barcode,
             price: product.price,
             qty: parsedQty,
+            discount: 0,
             total: parsedQty * product.price,
           },
         ];
@@ -878,7 +879,7 @@ const POS = () => {
     setCart((prevCart) =>
       prevCart.map((item) =>
         item.id === id
-          ? { ...item, qty, total: qty * item.price }
+          ? { ...item, qty, total: Math.max(0, (qty * item.price) - (item.discount || 0)) }
           : item
       )
     );
@@ -890,7 +891,19 @@ const POS = () => {
     setCart((prevCart) =>
       prevCart.map((item) =>
         item.id === id
-          ? { ...item, price, total: item.qty * price }
+          ? { ...item, price, total: Math.max(0, (item.qty * price) - (item.discount || 0)) }
+          : item
+      )
+    );
+  };
+
+  const handleItemDiscountChange = (id, newDiscount) => {
+    const discount = parseFloat(newDiscount) || 0;
+    if (discount < 0) return;
+    setCart((prevCart) =>
+      prevCart.map((item) =>
+        item.id === id
+          ? { ...item, discount, total: Math.max(0, (item.qty * item.price) - discount) }
           : item
       )
     );
@@ -905,7 +918,7 @@ const POS = () => {
     setSelectedProduct(null);
     setProductInputValue('');
     setQuantity(1);
-    setDiscountPercent(0);
+    setDiscountAmount(0);
     setCash('');
     setLastSale(null);
     setSelectedCustomer(null);
@@ -913,9 +926,10 @@ const POS = () => {
   };
 
   // Calculations
-  const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const finalDiscount = subtotal * ((parseFloat(discountPercent) || 0) / 100);
-  const total = Math.max(0, subtotal - finalDiscount);
+  const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const totalItemDiscount = cart.reduce((sum, item) => sum + (item.discount || 0), 0);
+  const finalDiscount = parseFloat(discountAmount) || 0;
+  const total = Math.max(0, subtotal - totalItemDiscount - finalDiscount);
   const paid = parseFloat(cash) || 0;
   const change = Math.max(0, paid - total);
 
@@ -950,11 +964,12 @@ const POS = () => {
             barcode: item.barcode,
             quantity: item.qty,
             price: item.price,
+            discount: item.discount || 0,
             total: item.total,
           })),
           totalAmount: total,
           paidAmount: paid,
-          discount: finalDiscount,
+          discount: totalItemDiscount + finalDiscount,
           tax: 0,
           customerId: selectedCustomer?.id || null,
         }),
@@ -975,7 +990,7 @@ const POS = () => {
       );
       setCart([]);
       setCash('');
-      setDiscountPercent(0);
+      setDiscountAmount(0);
       setSelectedCustomer(null);
     } catch (err) {
       setError(err.message || 'Failed to process checkout');
@@ -1018,7 +1033,10 @@ const POS = () => {
           <div key={item.id || idx} style={{ margin: '6px 0' }}>
             <div style={{ fontWeight: 'bold' }}>{item.name}</div>
             <div className="thermal-receipt-flex" style={{ paddingLeft: '8px' }}>
-              <span>{item.qty || item.quantity} x {settings.currency}{parseFloat(item.price).toFixed(2)}</span>
+              <span>
+                {item.qty || item.quantity} x {settings.currency}{parseFloat(item.price).toFixed(2)}
+                {parseFloat(item.discount || 0) > 0 && ` (Disc: -${settings.currency}${parseFloat(item.discount).toFixed(2)})`}
+              </span>
               <span>{settings.currency}{parseFloat(item.total).toFixed(2)}</span>
             </div>
           </div>
@@ -1185,7 +1203,8 @@ const POS = () => {
                     <TableRow>
                       <TableCell>Item Name</TableCell>
                       <TableCell>Price</TableCell>
-                      <TableCell style={{ width: 110 }}>Qty</TableCell>
+                      <TableCell style={{ width: 100 }}>Qty</TableCell>
+                      <TableCell style={{ width: 110 }}>Discount</TableCell>
                       <TableCell>Total</TableCell>
                       <TableCell align="right" style={{ width: 60 }}></TableCell>
                     </TableRow>
@@ -1193,7 +1212,7 @@ const POS = () => {
                   <TableBody>
                     {cart.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                        <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
                           <Typography variant="body2" color="text.secondary">
                             Cart is empty. Scan a barcode or add an item manually.
                           </Typography>
@@ -1214,7 +1233,7 @@ const POS = () => {
                               }}
                             />
                           </TableCell>
-                          <TableCell style={{ width: 110 }}>
+                          <TableCell style={{ width: 100 }}>
                             <TextField
                               type="number"
                               size="small"
@@ -1222,6 +1241,18 @@ const POS = () => {
                               onChange={(e) => handleQtyChange(item.id, e.target.value)}
                               slotProps={{
                                 htmlInput: { min: 1, step: 1, style: { padding: '4px 8px' } }
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell style={{ width: 110 }}>
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={item.discount || ''}
+                              onChange={(e) => handleItemDiscountChange(item.id, e.target.value)}
+                              placeholder="0"
+                              slotProps={{
+                                htmlInput: { min: 0, step: 'any', style: { padding: '4px 8px' } }
                               }}
                             />
                           </TableCell>
@@ -1316,21 +1347,21 @@ const POS = () => {
                 </Box>
 
                 <TextField
-                  label="Discount (%)"
+                  label="Discount (Amt)"
                   type="number"
                   size="small"
                   fullWidth
-                  value={discountPercent}
-                  onChange={(e) => setDiscountPercent(e.target.value)}
+                  value={discountAmount || ''}
+                  onChange={(e) => setDiscountAmount(e.target.value)}
                   slotProps={{
-                    htmlInput: { min: 0, max: 100 }
+                    htmlInput: { min: 0 }
                   }}
                 />
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2" color="text.secondary">Discount Amt:</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, color: '#b91c1c' }}>
-                    -{settings.currency}{finalDiscount.toFixed(2)}
+                    -{settings.currency}{(totalItemDiscount + finalDiscount).toFixed(2)}
                   </Typography>
                 </Box>
 

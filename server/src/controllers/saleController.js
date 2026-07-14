@@ -83,6 +83,7 @@ const createSale = async (req, res) => {
             barcode: item.barcode || null,
             quantity: parseFloat(item.quantity),
             price: parseFloat(item.price),
+            discount: parseFloat(item.discount) || 0,
             total: parseFloat(item.total),
           }))
         }

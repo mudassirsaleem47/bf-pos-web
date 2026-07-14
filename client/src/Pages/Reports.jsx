@@ -11,7 +11,11 @@ import {
   Divider,
   Paper,
   LinearProgress,
-  Alert
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import {
   BarChart as ChartIcon,
@@ -32,6 +36,8 @@ const Reports = () => {
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currency, setCurrency] = useState('Rs.');
@@ -53,15 +59,16 @@ const Reports = () => {
       const token = getToken();
       if (!token) return;
 
-      // 1. Fetch sales, products, settings, and expenses in parallel from SQLite
-      const [salesRes, productsRes, settingsRes, expensesRes] = await Promise.all([
+      // 1. Fetch sales, products, settings, expenses, and categories in parallel from SQLite
+      const [salesRes, productsRes, settingsRes, expensesRes, categoriesRes] = await Promise.all([
         fetch(`${API_URL}/api/sales`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_URL}/api/products`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_URL}/api/settings`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/expenses`, { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch(`${API_URL}/api/expenses`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/categories`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
-      if (salesRes.status === 401 || productsRes.status === 401 || expensesRes.status === 401) {
+      if (salesRes.status === 401 || productsRes.status === 401 || expensesRes.status === 401 || categoriesRes.status === 401) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         navigate('/login');
@@ -71,10 +78,12 @@ const Reports = () => {
       const salesData = await salesRes.json();
       const productsData = await productsRes.json();
       const expensesData = await expensesRes.json();
+      const categoriesData = await categoriesRes.json();
 
       setSales(Array.isArray(salesData) ? salesData : []);
       setProducts(Array.isArray(productsData) ? productsData : []);
       setExpenses(Array.isArray(expensesData) ? expensesData : []);
+      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
 
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
@@ -94,15 +103,68 @@ const Reports = () => {
   }, []);
 
   // ── Stats Calculations ─────────────────────────────────────────
-  const totalRevenue = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const totalDiscounts = sales.reduce((sum, s) => sum + s.discount, 0);
-  const totalExpenses = expenses.reduce((sum, ex) => sum + ex.amount, 0);
-  const netProfit = totalRevenue - totalExpenses;
+  // Gross Sales is the sum of (item.price * item.quantity) before any discounts, filtered by brand if active
+  const grossSales = sales.reduce((sum, s) => {
+    const itemGross = (s.items || []).reduce((itemSum, item) => {
+      const product = products.find(p => p.id === item.productId);
+      if (selectedCategory !== 'all' && product?.categoryId !== selectedCategory) {
+        return itemSum;
+      }
+      return itemSum + (item.price * item.quantity);
+    }, 0);
+    return sum + itemGross;
+  }, 0);
+
+  // Total Discounts is the sum of transaction discount (proportional) + item discounts, filtered by brand
+  const totalDiscounts = sales.reduce((sum, s) => {
+    const saleTotal = (s.items || []).reduce((itemSum, item) => itemSum + item.total, 0) || 1;
+    const brandDiscounts = (s.items || []).reduce((itemSum, item) => {
+      const product = products.find(p => p.id === item.productId);
+      if (selectedCategory !== 'all' && product?.categoryId !== selectedCategory) {
+        return itemSum;
+      }
+      const itemDisc = item.discount || 0;
+      const proportion = item.total / saleTotal;
+      const shareOfTransDiscount = (s.discount || 0) * proportion;
+      return itemSum + itemDisc + shareOfTransDiscount;
+    }, 0);
+
+    // If no brand filter is active, we just use the simple sum of transaction discount + all item discounts
+    if (selectedCategory === 'all') {
+      const itemDiscounts = (s.items || []).reduce((itemSum, item) => itemSum + (item.discount || 0), 0);
+      return sum + (s.discount || 0) + itemDiscounts;
+    }
+
+    return sum + brandDiscounts;
+  }, 0);
+
+  // Total Buying Price is the cost of goods sold (COGS)
+  const totalBuyingPrice = sales.reduce((sum, s) => {
+    const saleCost = (s.items || []).reduce((itemSum, item) => {
+      const product = products.find(p => p.id === item.productId);
+      if (selectedCategory !== 'all' && product?.categoryId !== selectedCategory) {
+        return itemSum;
+      }
+      const costPrice = product ? (product.supplierPrice || 0) : 0;
+      return itemSum + (costPrice * item.quantity);
+    }, 0);
+    return sum + saleCost;
+  }, 0);
+
+  // Store operating expenses (only show if all brands are selected; for a specific brand, operating expenses are 0)
+  const totalExpenses = selectedCategory === 'all' ? expenses.reduce((sum, ex) => sum + ex.amount, 0) : 0;
+
+  // Final Profit = Gross Sales - Total Discounts - Total Buying Price - Total Expenses
+  const finalProfit = grossSales - totalDiscounts - totalBuyingPrice - totalExpenses;
 
   // Calculate Top Selling Products
   const productSalesCount = {};
   sales.forEach(sale => {
-    sale.items.forEach(item => {
+    (sale.items || []).forEach(item => {
+      const product = products.find(p => p.id === item.productId);
+      if (selectedCategory !== 'all' && product?.categoryId !== selectedCategory) {
+        return; // Skip items from other brands
+      }
       const pId = item.productId || item.name;
       productSalesCount[pId] = (productSalesCount[pId] || 0) + item.quantity;
     });
@@ -124,15 +186,20 @@ const Reports = () => {
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 5);
 
-  // Calculate Expense Categories breakdown
+  // Calculate Expense Categories breakdown (expenses are store-wide, so only show when 'all' is selected)
   const expenseCategories = {};
-  expenses.forEach(ex => {
-    expenseCategories[ex.category] = (expenseCategories[ex.category] || 0) + ex.amount;
-  });
+  if (selectedCategory === 'all') {
+    expenses.forEach(ex => {
+      expenseCategories[ex.category] = (expenseCategories[ex.category] || 0) + ex.amount;
+    });
+  }
 
   // Calculate Category Product Share
   const categoryAssets = {};
   products.forEach(p => {
+    if (selectedCategory !== 'all' && p.categoryId !== selectedCategory) {
+      return; // Skip if a specific category is selected and this is not it
+    }
     const catName = p.category?.name || 'Unassigned';
     categoryAssets[catName] = (categoryAssets[catName] || 0) + (p.stock * p.price);
   });
@@ -163,10 +230,11 @@ const Reports = () => {
       startY: 44,
       head: [['Key Performance Metric', `Value (${currency})`]],
       body: [
-        ['Total Gross Sales Revenue', totalRevenue.toFixed(2)],
+        ['Total Gross Sales Revenue', grossSales.toFixed(2)],
         ['Total Sales Discount Granted', totalDiscounts.toFixed(2)],
+        ['Total Cost of Goods Sold (Buying Price)', totalBuyingPrice.toFixed(2)],
         ['Total Operating Expenses Paid', totalExpenses.toFixed(2)],
-        ['Net Store Operating Income', netProfit.toFixed(2)],
+        ['Final Net Profit', finalProfit.toFixed(2)],
       ],
       styles: { fontSize: 10, cellPadding: 4, textColor: [30, 41, 59] },
       headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
@@ -232,7 +300,7 @@ const Reports = () => {
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
 
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
             Store Performance Reports
@@ -241,14 +309,35 @@ const Reports = () => {
             Consolidated operating statistics, top revenue streams, cost structures, and printable audits.
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<PrintIcon />}
-          onClick={handlePrintExecutiveReport}
-          sx={{ borderRadius: 2 }}
-        >
-          Executive Summary Report
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ width: { xs: '100%', md: 'auto' } }}>
+          {/* Brand Filter */}
+          <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
+            <InputLabel id="brand-filter-label">Filter by Brand</InputLabel>
+            <Select
+              labelId="brand-filter-label"
+              value={selectedCategory}
+              label="Filter by Brand"
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              sx={{ bgcolor: '#ffffff', borderRadius: 2 }}
+            >
+              <MenuItem value="all"><em>All Brands</em></MenuItem>
+              {categories.map((cat) => (
+                <MenuItem key={cat.id} value={cat.id}>
+                  {cat.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <Button
+            variant="contained"
+            startIcon={<PrintIcon />}
+            onClick={handlePrintExecutiveReport}
+            sx={{ borderRadius: 2, height: 40, width: { xs: '100%', sm: 'auto' } }}
+          >
+            Executive Summary Report
+          </Button>
+        </Stack>
       </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -262,7 +351,7 @@ const Reports = () => {
                 <Box>
                   <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>TOTAL GROSS REVENUE</Typography>
                   <Typography variant="h5" sx={{ fontWeight: 800, mt: 1 }}>
-                    {currency} {totalRevenue.toFixed(2)}
+                    {currency} {grossSales.toFixed(2)}
                   </Typography>
                 </Box>
                 <SalesIcon sx={{ fontSize: 40, opacity: 0.2 }} />
@@ -288,13 +377,13 @@ const Reports = () => {
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: netProfit >= 0 ? '#10b981' : '#f97316', color: '#fff', borderRadius: 1.5 }}>
+          <Card sx={{ bgcolor: finalProfit >= 0 ? '#10b981' : '#f97316', color: '#fff', borderRadius: 1.5 }}>
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>NET OPERATING INCOME</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700, opacity: 0.9 }}>FINAL PROFIT</Typography>
                   <Typography variant="h5" sx={{ fontWeight: 800, mt: 1 }}>
-                    {currency} {netProfit.toFixed(2)}
+                    {currency} {finalProfit.toFixed(2)}
                   </Typography>
                 </Box>
                 <ProfitIcon sx={{ fontSize: 40, opacity: 0.2 }} />
@@ -376,7 +465,11 @@ const Reports = () => {
               </Typography>
             </Box>
             <CardContent sx={{ p: 3 }}>
-              {Object.keys(expenseCategories).length === 0 ? (
+              {selectedCategory !== 'all' ? (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4, fontStyle: 'italic' }}>
+                  Operating expenses are store-wide and are only shown when "All Brands" is selected.
+                </Typography>
+              ) : Object.keys(expenseCategories).length === 0 ? (
                 <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
                   No store expenses recorded yet. Go to Expenses to record cost drivers.
                 </Typography>

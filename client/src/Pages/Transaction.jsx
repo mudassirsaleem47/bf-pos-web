@@ -222,7 +222,9 @@ const Transaction = () => {
       head: [['#', 'Item / Product', 'Barcode', 'Quantity', `Price (${storeSettings.currency})`, `Total (${storeSettings.currency})`]],
       body: sale.items.map((item, i) => [
         i + 1,
-        item.name,
+        parseFloat(item.discount || 0) > 0 
+          ? `${item.name}\n(Disc: -${storeSettings.currency}${parseFloat(item.discount).toFixed(2)})`
+          : item.name,
         item.barcode || '-',
         item.quantity,
         parseFloat(item.price).toFixed(2),
@@ -530,7 +532,14 @@ const Transaction = () => {
                   <TableBody>
                     {activeSale.items.map((it) => (
                       <TableRow key={it.id}>
-                        <TableCell sx={{ fontSize: '0.825rem', fontWeight: 500 }}>{it.name}</TableCell>
+                        <TableCell sx={{ fontSize: '0.825rem', fontWeight: 500 }}>
+                          {it.name}
+                          {parseFloat(it.discount || 0) > 0 && (
+                            <Typography variant="caption" display="block" color="error.main" sx={{ fontWeight: 600 }}>
+                              Discount: -{storeSettings.currency}{parseFloat(it.discount).toFixed(2)}
+                            </Typography>
+                          )}
+                        </TableCell>
                         <TableCell sx={{ fontSize: '0.825rem' }} align="center">{it.quantity}</TableCell>
                         <TableCell sx={{ fontSize: '0.825rem' }} align="right">{storeSettings.currency} {it.price.toFixed(2)}</TableCell>
                         <TableCell sx={{ fontSize: '0.825rem', fontWeight: 600 }} align="right">{storeSettings.currency} {it.total.toFixed(2)}</TableCell>

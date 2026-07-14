@@ -59,6 +59,10 @@ const Products = () => {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [deleteIds, setDeleteIds] = useState([]);
 
+  // Brand (Category) States
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+
   // Printable Barcode Dialog
   const [openBarcodeDialog, setOpenBarcodeDialog] = useState(false);
   const [barcodeToPrint, setBarcodeToPrint] = useState('');
@@ -394,6 +398,22 @@ const Products = () => {
     }
   }, [navigate, getToken]);
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      const response = await fetch(`${API_URL}/api/categories`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+    }
+  }, [getToken]);
+
   const fetchSettings = useCallback(async () => {
     try {
       const token = getToken();
@@ -415,7 +435,17 @@ const Products = () => {
   useEffect(() => {
     fetchProducts();
     fetchSettings();
-  }, [fetchProducts]);
+    fetchCategories();
+
+    const handleSync = () => {
+      fetchProducts();
+    };
+
+    window.addEventListener('sync-database', handleSync);
+    return () => {
+      window.removeEventListener('sync-database', handleSync);
+    };
+  }, [fetchProducts, fetchSettings, fetchCategories]);
 
   const handleBulkDelete = async (selectedIds) => {
     setLoading(true);
@@ -632,12 +662,17 @@ const Products = () => {
     }
   ];
 
-  // Calculate statistics from the products state
-  const totalProducts = products.length;
-  const totalStock = products.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
-  const totalRetailValue = products.reduce((sum, p) => sum + ((Number(p.stock) || 0) * (Number(p.price) || 0)), 0);
-  const totalCostValue = products.reduce((sum, p) => sum + ((Number(p.stock) || 0) * (Number(p.supplierPrice) || 0)), 0);
-  const lowStockCount = products.filter(p => (Number(p.stock) || 0) <= (Number(p.lowStockAlert) || 5)).length;
+  // Filter products based on selected Category/Brand
+  const filteredProducts = selectedCategory === 'all'
+    ? products
+    : products.filter(p => p.categoryId === selectedCategory);
+
+  // Calculate statistics from the filtered products state
+  const totalProducts = filteredProducts.length;
+  const totalStock = filteredProducts.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
+  const totalRetailValue = filteredProducts.reduce((sum, p) => sum + ((Number(p.stock) || 0) * (Number(p.price) || 0)), 0);
+  const totalCostValue = filteredProducts.reduce((sum, p) => sum + ((Number(p.stock) || 0) * (Number(p.supplierPrice) || 0)), 0);
+  const lowStockCount = filteredProducts.filter(p => (Number(p.stock) || 0) <= (Number(p.lowStockAlert) || 5)).length;
 
   const formatCurrency = (val) => {
     const num = Number(val);
@@ -665,13 +700,13 @@ const Products = () => {
       doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
 
       // Add summary stats
-      doc.text(`Total Products: ${products.length}   |   Total Stock Qty: ${totalStock}   |   Total Retail Value: Rs. ${totalRetailValue.toFixed(2)}`, 14, 34);
+      doc.text(`Total Products: ${filteredProducts.length}   |   Total Stock Qty: ${totalStock}   |   Total Retail Value: Rs. ${totalRetailValue.toFixed(2)}`, 14, 34);
 
       // Prepare Table Data
       const tableColumn = ["#", "Name", "Barcode", "Price", "Stock", "Unit", "Brand", "Expiry Date"];
       const tableRows = [];
 
-      products.forEach((prod, index) => {
+      filteredProducts.forEach((prod, index) => {
         const prodData = [
           index + 1,
           prod.name,
@@ -707,17 +742,36 @@ const Products = () => {
     <Box sx={{ width: '100%', maxWidth: 'none', display: 'flex', flexDirection: 'column', gap: 3, fontFamily: '"Inter", sans-serif' }}>
 
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
           Products
         </Typography>
-        <Stack direction="row" spacing={2}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ width: { xs: '100%', sm: 'auto' } }}>
+          {/* Brand Filter */}
+          <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
+            <InputLabel id="brand-filter-label">Filter by Brand</InputLabel>
+            <Select
+              labelId="brand-filter-label"
+              value={selectedCategory}
+              label="Filter by Brand"
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              sx={{ bgcolor: '#ffffff', borderRadius: 2 }}
+            >
+              <MenuItem value="all"><em>All Brands</em></MenuItem>
+              {categories.map((cat) => (
+                <MenuItem key={cat.id} value={cat.id}>
+                  {cat.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
           <Button
             variant="outlined"
             color="secondary"
             startIcon={<PrintIcon />}
             onClick={handleDownloadPDF}
-            sx={{ borderRadius: 2, px: 3 }}
+            sx={{ borderRadius: 2, px: 3, width: { xs: '100%', sm: 'auto' } }}
           >
             Inventory Report
           </Button>
@@ -725,7 +779,7 @@ const Products = () => {
             variant="outlined"
             startIcon={<UploadIcon />}
             onClick={() => setOpenImportDialog(true)}
-            sx={{ borderRadius: 2, px: 3 }}
+            sx={{ borderRadius: 2, px: 3, width: { xs: '100%', sm: 'auto' } }}
           >
             Import CSV
           </Button>
@@ -733,7 +787,7 @@ const Products = () => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => navigate('/products/add')}
-            sx={{ borderRadius: 2, px: 3 }}
+            sx={{ borderRadius: 2, px: 3, width: { xs: '100%', sm: 'auto' } }}
           >
             Add Product
           </Button>
@@ -916,7 +970,7 @@ const Products = () => {
       <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
         <DataTable
           columns={columns}
-          data={products}
+          data={filteredProducts}
           loading={loading}
           selected={selected}
           onSelectedChange={setSelected}
