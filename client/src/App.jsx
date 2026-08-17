@@ -23,6 +23,7 @@ import Expenses from './Pages/Expenses.jsx';
 import ReceivablesPayables from './Pages/ReceivablesPayables.jsx';
 import Staff from './Pages/Staff.jsx';
 import Reports from './Pages/Reports.jsx';
+import PreOrders from './Pages/PreOrders.jsx';
 // Define a decent, flat theme with Inter font
 const theme = createTheme({
   typography: {
@@ -108,6 +109,7 @@ const App = () => {
             <Route path="products/add" element={<AddProduct />} />
             <Route path="products/edit/:id" element={<EditProduct />} />
             <Route path="pos" element={<POS />} />
+            <Route path="pre-orders" element={<PreOrders />} />
             <Route path="expired-products" element={<ExpiredProducts />} />
             <Route path="dead-stock" element={<DeadStock />} />
             <Route path="categories" element={<Categories />} />

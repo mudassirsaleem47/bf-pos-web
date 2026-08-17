@@ -30,7 +30,8 @@ import {
   RemoveShoppingCart as ExpiredProductsIcon,
   Report as DeadStockIcon,
   BarChart as ReportsIcon,
-  AccountBalanceWallet as ExpensesIcon
+  AccountBalanceWallet as ExpensesIcon,
+  PendingActions as PreOrderIcon
 } from '@mui/icons-material';
 
 
@@ -41,6 +42,7 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
   const sidebarItems = [
     { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
     { label: 'POS (Cashier)', path: '/pos', icon: ShoppingCartIcon },
+    { label: 'Pre-Orders', path: '/pre-orders', icon: PreOrderIcon },
     { label: 'Products', path: '/products', icon: ProductsIcon },
     { label: 'Brands', path: '/categories', icon: CategoriesIcon },
     { label: 'Suppliers', path: '/suppliers', icon: SuppliersIcon },

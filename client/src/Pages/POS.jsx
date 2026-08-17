@@ -1230,7 +1230,7 @@ const POS = () => {
                   <TableHead sx={{ bgcolor: '#f8fafc' }}>
                     <TableRow>
                       <TableCell>Item Name</TableCell>
-                      <TableCell style={{ width: 145 }}>Price</TableCell>
+                      <TableCell style={{ width: 220 }}>Price</TableCell>
                       <TableCell style={{ width: 85 }}>Qty</TableCell>
                       <TableCell style={{ width: 95 }}>Discount</TableCell>
                       <TableCell style={{ width: 105 }}>Total</TableCell>
@@ -1255,7 +1255,7 @@ const POS = () => {
                         return (
                           <TableRow key={item.id} hover>
                             <TableCell sx={{ fontWeight: 600 }}>{item.name}</TableCell>
-                            <TableCell style={{ width: 145 }}>
+                            <TableCell style={{ width: 220, minWidth: 200 }}>
                               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                                 <TextField
                                   type="number"
@@ -1269,8 +1269,8 @@ const POS = () => {
                                       min: 0, 
                                       step: 'any', 
                                       style: { 
-                                        padding: '4px 8px', 
-                                        fontSize: '0.85rem', 
+                                        padding: '6px 10px', 
+                                        fontSize: '0.9rem', 
                                         fontWeight: 600,
                                         backgroundColor: isZeroPrice ? '#fffbeb' : (isBelowCost ? '#fef2f2' : '#ffffff')
                                       } 
@@ -1278,17 +1278,17 @@ const POS = () => {
                                   }}
                                 />
                                 {isBelowCost && (
-                                  <Typography variant="caption" sx={{ color: '#dc2626', fontWeight: 600, fontSize: '0.68rem', mt: 0.25, display: 'block', lineHeight: 1.1 }}>
+                                  <Typography variant="caption" sx={{ color: '#dc2626', fontWeight: 600, fontSize: '0.72rem', mt: 0.5, whiteSpace: 'nowrap', display: 'block', lineHeight: 1.2 }}>
                                     ⚠️ Below Cost ({settings.currency}{parseFloat(item.supplierPrice).toFixed(0)})
                                   </Typography>
                                 )}
                                 {isZeroPrice && (
-                                  <Typography variant="caption" sx={{ color: '#d97706', fontWeight: 600, fontSize: '0.68rem', mt: 0.25, display: 'block', lineHeight: 1.1 }}>
+                                  <Typography variant="caption" sx={{ color: '#d97706', fontWeight: 600, fontSize: '0.72rem', mt: 0.5, whiteSpace: 'nowrap', display: 'block', lineHeight: 1.2 }}>
                                     ⚠️ Enter Price{item.supplierPrice > 0 ? ` (Cost: ${settings.currency}${parseFloat(item.supplierPrice).toFixed(0)})` : ''}
                                   </Typography>
                                 )}
                                 {!isZeroPrice && !isBelowCost && item.supplierPrice > 0 && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem', mt: 0.25, display: 'block', lineHeight: 1.1 }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem', mt: 0.5, whiteSpace: 'nowrap', display: 'block', lineHeight: 1.2 }}>
                                     Cost: {settings.currency}{parseFloat(item.supplierPrice).toFixed(0)}
                                   </Typography>
                                 )}
@@ -1301,7 +1301,7 @@ const POS = () => {
                                 value={item.qty}
                                 onChange={(e) => handleQtyChange(item.id, e.target.value)}
                                 slotProps={{
-                                  htmlInput: { min: 1, step: 1, style: { padding: '4px 8px', fontSize: '0.85rem' } }
+                                  htmlInput: { min: 1, step: 1, style: { padding: '6px 8px', fontSize: '0.85rem' } }
                                 }}
                               />
                             </TableCell>
@@ -1313,7 +1313,7 @@ const POS = () => {
                                 onChange={(e) => handleItemDiscountChange(item.id, e.target.value)}
                                 placeholder="0"
                                 slotProps={{
-                                  htmlInput: { min: 0, step: 'any', style: { padding: '4px 8px', fontSize: '0.85rem' } }
+                                  htmlInput: { min: 0, step: 'any', style: { padding: '6px 8px', fontSize: '0.85rem' } }
                                 }}
                               />
                             </TableCell>

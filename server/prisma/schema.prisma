@@ -27,6 +27,7 @@ model User {
   expenses         Expense[]
   loans            Loan[]
   staff            Staff[]
+  preOrders        PreOrder[]
 }
 
 model Setting {
@@ -117,6 +118,7 @@ model Product {
   supplier      Supplier?  @relation(fields: [supplierId], references: [id])
   warehouse     Warehouse? @relation(fields: [warehouseId], references: [id])
   saleItems     SaleItem[]
+  preOrderItems PreOrderItem[]
 
   @@unique([userId, barcode])
 }
@@ -198,6 +200,7 @@ model Customer {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @default(now()) @updatedAt
   sales         SaleTransaction[]
+  preOrders     PreOrder[]
 }
 
 model Expense {
@@ -241,6 +244,41 @@ model Staff {
   status    String   @default("Active")
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+}
+
+model PreOrder {
+  id            String         @id @default(uuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderNo       String
+  customerId    String?
+  customer      Customer?      @relation(fields: [customerId], references: [id])
+  customerName  String?
+  customerPhone String?
+  totalAmount   Float          @default(0)
+  advanceAmount Float          @default(0)
+  dueAmount     Float          @default(0)
+  status        String         @default("Pending") // Pending, Processing, Ready, Delivered, Cancelled
+  orderDate     DateTime       @default(now())
+  expectedDate  DateTime?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @default(now()) @updatedAt
+  items         PreOrderItem[]
+
+  @@unique([userId, orderNo])
+}
+
+model PreOrderItem {
+  id         String   @id @default(uuid())
+  preOrderId String
+  preOrder   PreOrder @relation(fields: [preOrderId], references: [id], onDelete: Cascade)
+  productId  String?
+  product    Product? @relation(fields: [productId], references: [id])
+  name       String
+  quantity   Float    @default(1)
+  price      Float    @default(0)
+  total      Float    @default(0)
 }
 
 model SyncLog {
