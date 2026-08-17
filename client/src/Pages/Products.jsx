@@ -215,7 +215,7 @@ const Products = () => {
 
   const databaseFields = [
     { key: 'name', label: 'Product Name', required: true, matches: /name|product|item|title/i },
-    { key: 'price', label: 'Sell Price', required: true, matches: /price|sell|retail|rate/i },
+    { key: 'price', label: 'Sell Price', required: false, matches: /price|sell|retail|rate/i },
     { key: 'barcode', label: 'SKU / Barcode', required: false, matches: /barcode|sku|code|serial/i },
     { key: 'stock', label: 'Quantity / Stock', required: false, matches: /stock|quantity|qty|count|amt/i },
     { key: 'unit', label: 'Unit', required: false, matches: /unit|pack/i },
@@ -608,9 +608,15 @@ const Products = () => {
     },
     {
       id: 'price',
-      label: 'Price',
+      label: 'Sell Price',
       sortable: true,
-      render: (row) => `Rs. ${parseFloat(row.price).toFixed(2)}`
+      render: (row) => parseFloat(row.price) > 0 ? `Rs. ${parseFloat(row.price).toFixed(2)}` : 'Dynamic / POS'
+    },
+    {
+      id: 'supplierPrice',
+      label: 'Cost Price',
+      sortable: true,
+      render: (row) => `Rs. ${parseFloat(row.supplierPrice || 0).toFixed(2)}`
     },
     { id: 'stock', label: 'Stock', sortable: true },
     { id: 'unit', label: 'Unit', sortable: true },

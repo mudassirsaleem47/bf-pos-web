@@ -240,10 +240,6 @@ const EditProduct = () => {
       setError('Please enter a product name');
       return;
     }
-    if (formData.price === '' || formData.price === null || formData.price === undefined) {
-      setError('Please enter a Sell Price');
-      return;
-    }
 
     // Auto-generate barcode if empty
     let finalBarcode = formData.barcode.trim();
@@ -596,7 +592,7 @@ const EditProduct = () => {
                 'Unit Code',
                 'Low Stock Alert',
                 'Supplier Price',
-                'Sell Price *',
+                'Sell Price (Opt)',
                 'Model',
                 'Suppliers'
               ].map((h, idx) => (
@@ -722,11 +718,10 @@ const EditProduct = () => {
                 }}
               >
                 <TextField
-                  placeholder="Sell Price"
+                  placeholder="0 (Optional)"
                   name="price"
                   type="number"
                   fullWidth
-                  required
                   variant="standard"
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}

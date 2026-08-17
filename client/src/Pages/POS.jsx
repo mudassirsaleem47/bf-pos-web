@@ -834,25 +834,28 @@ const POS = () => {
       const existingIndex = prevCart.findIndex((item) => item.id === product.id);
       if (existingIndex > -1) {
         const newCart = [...prevCart];
-        const newQty = newCart[existingIndex].qty + parsedQty;
-        const itemDisc = newCart[existingIndex].discount || 0;
+        const newQty = (parseFloat(newCart[existingIndex].qty) || 0) + parsedQty;
+        const currentPrice = newCart[existingIndex].price !== undefined && newCart[existingIndex].price !== '' ? parseFloat(newCart[existingIndex].price) : (parseFloat(product.price) || 0);
+        const itemDisc = parseFloat(newCart[existingIndex].discount) || 0;
         newCart[existingIndex] = {
           ...newCart[existingIndex],
           qty: newQty,
-          total: Math.max(0, (newQty * product.price) - itemDisc),
+          total: Math.max(0, (newQty * currentPrice) - itemDisc),
         };
         return newCart;
       } else {
+        const initialPrice = product.price !== null && product.price !== undefined ? parseFloat(product.price) : 0;
         return [
           ...prevCart,
           {
             id: product.id,
             name: product.name,
             barcode: product.barcode,
-            price: product.price,
+            price: initialPrice,
+            supplierPrice: parseFloat(product.supplierPrice) || 0,
             qty: parsedQty,
             discount: 0,
-            total: parsedQty * product.price,
+            total: parsedQty * initialPrice,
           },
         ];
       }
@@ -874,38 +877,59 @@ const POS = () => {
   };
 
   const handleQtyChange = (id, newQty) => {
-    const qty = parseFloat(newQty);
-    if (isNaN(qty) || qty <= 0) return;
     setCart((prevCart) =>
-      prevCart.map((item) =>
-        item.id === id
-          ? { ...item, qty, total: Math.max(0, (qty * item.price) - (item.discount || 0)) }
-          : item
-      )
+      prevCart.map((item) => {
+        if (item.id === id) {
+          const parsed = newQty === '' ? '' : parseFloat(newQty);
+          const numQty = (parsed === '' || isNaN(parsed) || parsed <= 0) ? 1 : parsed;
+          const numPrice = parseFloat(item.price) || 0;
+          const numDisc = parseFloat(item.discount) || 0;
+          return {
+            ...item,
+            qty: newQty,
+            total: Math.max(0, (numQty * numPrice) - numDisc)
+          };
+        }
+        return item;
+      })
     );
   };
 
   const handlePriceChange = (id, newPrice) => {
-    const price = parseFloat(newPrice);
-    if (isNaN(price) || price < 0) return;
     setCart((prevCart) =>
-      prevCart.map((item) =>
-        item.id === id
-          ? { ...item, price, total: Math.max(0, (item.qty * price) - (item.discount || 0)) }
-          : item
-      )
+      prevCart.map((item) => {
+        if (item.id === id) {
+          const parsed = newPrice === '' ? '' : parseFloat(newPrice);
+          const numPrice = (parsed === '' || isNaN(parsed) || parsed < 0) ? 0 : parsed;
+          const numQty = parseFloat(item.qty) || 1;
+          const numDisc = parseFloat(item.discount) || 0;
+          return {
+            ...item,
+            price: newPrice,
+            total: Math.max(0, (numQty * numPrice) - numDisc)
+          };
+        }
+        return item;
+      })
     );
   };
 
   const handleItemDiscountChange = (id, newDiscount) => {
-    const discount = parseFloat(newDiscount) || 0;
-    if (discount < 0) return;
     setCart((prevCart) =>
-      prevCart.map((item) =>
-        item.id === id
-          ? { ...item, discount, total: Math.max(0, (item.qty * item.price) - discount) }
-          : item
-      )
+      prevCart.map((item) => {
+        if (item.id === id) {
+          const parsed = newDiscount === '' ? '' : parseFloat(newDiscount);
+          const numDisc = (parsed === '' || isNaN(parsed) || parsed < 0) ? 0 : parsed;
+          const numQty = parseFloat(item.qty) || 1;
+          const numPrice = parseFloat(item.price) || 0;
+          return {
+            ...item,
+            discount: newDiscount,
+            total: Math.max(0, (numQty * numPrice) - numDisc)
+          };
+        }
+        return item;
+      })
     );
   };
 
@@ -926,8 +950,12 @@ const POS = () => {
   };
 
   // Calculations
-  const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const totalItemDiscount = cart.reduce((sum, item) => sum + (item.discount || 0), 0);
+  const subtotal = cart.reduce((sum, item) => {
+    const p = parseFloat(item.price) || 0;
+    const q = parseFloat(item.qty) || 0;
+    return sum + (p * q);
+  }, 0);
+  const totalItemDiscount = cart.reduce((sum, item) => sum + (parseFloat(item.discount) || 0), 0);
   const finalDiscount = parseFloat(discountAmount) || 0;
   const total = Math.max(0, subtotal - totalItemDiscount - finalDiscount);
   const paid = parseFloat(cash) || 0;
@@ -1121,7 +1149,7 @@ const POS = () => {
                 {/* Product Autocomplete */}
                 <Autocomplete
                   options={products}
-                  getOptionLabel={(option) => `${option.name} (${settings.currency}${parseFloat(option.price).toFixed(2)})`}
+                  getOptionLabel={(option) => `${option.name} ${parseFloat(option.price) > 0 ? `(${settings.currency}${parseFloat(option.price).toFixed(2)})` : (parseFloat(option.supplierPrice) > 0 ? `(Cost: ${settings.currency}${parseFloat(option.supplierPrice).toFixed(2)})` : '')}`}
                   value={selectedProduct}
                   open={productDropdownOpen}
                   onOpen={(event) => {
@@ -1202,11 +1230,11 @@ const POS = () => {
                   <TableHead sx={{ bgcolor: '#f8fafc' }}>
                     <TableRow>
                       <TableCell>Item Name</TableCell>
-                      <TableCell>Price</TableCell>
-                      <TableCell style={{ width: 100 }}>Qty</TableCell>
-                      <TableCell style={{ width: 110 }}>Discount</TableCell>
-                      <TableCell>Total</TableCell>
-                      <TableCell align="right" style={{ width: 60 }}></TableCell>
+                      <TableCell style={{ width: 145 }}>Price</TableCell>
+                      <TableCell style={{ width: 85 }}>Qty</TableCell>
+                      <TableCell style={{ width: 95 }}>Discount</TableCell>
+                      <TableCell style={{ width: 105 }}>Total</TableCell>
+                      <TableCell align="right" style={{ width: 45 }}></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -1219,51 +1247,85 @@ const POS = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      cart.map((item) => (
-                        <TableRow key={item.id} hover>
-                          <TableCell sx={{ fontWeight: 600 }}>{item.name}</TableCell>
-                          <TableCell style={{ width: 120 }}>
-                            <TextField
-                              type="number"
-                              size="small"
-                              value={item.price}
-                              onChange={(e) => handlePriceChange(item.id, e.target.value)}
-                              slotProps={{
-                                htmlInput: { min: 0, step: 'any', style: { padding: '4px 8px' } }
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell style={{ width: 100 }}>
-                            <TextField
-                              type="number"
-                              size="small"
-                              value={item.qty}
-                              onChange={(e) => handleQtyChange(item.id, e.target.value)}
-                              slotProps={{
-                                htmlInput: { min: 1, step: 1, style: { padding: '4px 8px' } }
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell style={{ width: 110 }}>
-                            <TextField
-                              type="number"
-                              size="small"
-                              value={item.discount || ''}
-                              onChange={(e) => handleItemDiscountChange(item.id, e.target.value)}
-                              placeholder="0"
-                              slotProps={{
-                                htmlInput: { min: 0, step: 'any', style: { padding: '4px 8px' } }
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>{settings.currency}{parseFloat(item.total).toFixed(2)}</TableCell>
-                          <TableCell align="right">
-                            <IconButton size="small" color="error" onClick={() => handleRemoveItem(item.id)}>
-                              <DeleteIcon sx={{ fontSize: 18 }} />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      cart.map((item) => {
+                        const numPrice = parseFloat(item.price);
+                        const isBelowCost = numPrice > 0 && item.supplierPrice > 0 && numPrice < item.supplierPrice;
+                        const isZeroPrice = item.price === '' || isNaN(numPrice) || numPrice === 0;
+
+                        return (
+                          <TableRow key={item.id} hover>
+                            <TableCell sx={{ fontWeight: 600 }}>{item.name}</TableCell>
+                            <TableCell style={{ width: 145 }}>
+                              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                <TextField
+                                  type="number"
+                                  size="small"
+                                  value={item.price}
+                                  onChange={(e) => handlePriceChange(item.id, e.target.value)}
+                                  placeholder="0.00"
+                                  error={isBelowCost}
+                                  slotProps={{
+                                    htmlInput: { 
+                                      min: 0, 
+                                      step: 'any', 
+                                      style: { 
+                                        padding: '4px 8px', 
+                                        fontSize: '0.85rem', 
+                                        fontWeight: 600,
+                                        backgroundColor: isZeroPrice ? '#fffbeb' : (isBelowCost ? '#fef2f2' : '#ffffff')
+                                      } 
+                                    }
+                                  }}
+                                />
+                                {isBelowCost && (
+                                  <Typography variant="caption" sx={{ color: '#dc2626', fontWeight: 600, fontSize: '0.68rem', mt: 0.25, display: 'block', lineHeight: 1.1 }}>
+                                    ⚠️ Below Cost ({settings.currency}{parseFloat(item.supplierPrice).toFixed(0)})
+                                  </Typography>
+                                )}
+                                {isZeroPrice && (
+                                  <Typography variant="caption" sx={{ color: '#d97706', fontWeight: 600, fontSize: '0.68rem', mt: 0.25, display: 'block', lineHeight: 1.1 }}>
+                                    ⚠️ Enter Price{item.supplierPrice > 0 ? ` (Cost: ${settings.currency}${parseFloat(item.supplierPrice).toFixed(0)})` : ''}
+                                  </Typography>
+                                )}
+                                {!isZeroPrice && !isBelowCost && item.supplierPrice > 0 && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem', mt: 0.25, display: 'block', lineHeight: 1.1 }}>
+                                    Cost: {settings.currency}{parseFloat(item.supplierPrice).toFixed(0)}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </TableCell>
+                            <TableCell style={{ width: 85 }}>
+                              <TextField
+                                type="number"
+                                size="small"
+                                value={item.qty}
+                                onChange={(e) => handleQtyChange(item.id, e.target.value)}
+                                slotProps={{
+                                  htmlInput: { min: 1, step: 1, style: { padding: '4px 8px', fontSize: '0.85rem' } }
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell style={{ width: 95 }}>
+                              <TextField
+                                type="number"
+                                size="small"
+                                value={item.discount || ''}
+                                onChange={(e) => handleItemDiscountChange(item.id, e.target.value)}
+                                placeholder="0"
+                                slotProps={{
+                                  htmlInput: { min: 0, step: 'any', style: { padding: '4px 8px', fontSize: '0.85rem' } }
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem' }}>{settings.currency}{parseFloat(item.total).toFixed(2)}</TableCell>
+                            <TableCell align="right">
+                              <IconButton size="small" color="error" onClick={() => handleRemoveItem(item.id)}>
+                                <DeleteIcon sx={{ fontSize: 18 }} />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
