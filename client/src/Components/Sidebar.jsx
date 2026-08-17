@@ -50,7 +50,7 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
     { label: 'Customers', path: '/customers', icon: CustomersIcon },
     { label: 'Warehouse', path: '/warehouse', icon: WarehouseIcon },
     { label: 'Expired Products', path: '/expired-products', icon: ExpiredProductsIcon },
-    { label: 'Dead Stock', path: '/dead-stock', icon: DeadStockIcon },
+    { label: 'Damaged Products', path: '/dead-stock', icon: DeadStockIcon },
     { label: 'Transaction', path: '/transaction', icon: TransactionIcon },
     { label: 'Expenses', path: '/expenses', icon: ExpensesIcon },
     { label: 'Staff', path: '/staff', icon: CustomersIcon },

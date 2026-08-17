@@ -54,7 +54,9 @@ const createProduct = async (req, res) => {
       lowStockAlert,
       supplierPrice,
       model,
-      supplierId
+      supplierId,
+      isDamaged,
+      damagedReason
     } = req.body;
 
     if (!name || !barcode) {
@@ -81,6 +83,8 @@ const createProduct = async (req, res) => {
         supplierPrice: supplierPrice ? parseFloat(supplierPrice) : 0,
         model: model || null,
         supplierId: supplierId || null,
+        isDamaged: isDamaged === 'true' || isDamaged === true,
+        damagedReason: damagedReason || null,
         userId: req.user.id
       },
       include: {
@@ -117,7 +121,9 @@ const updateProduct = async (req, res) => {
       lowStockAlert,
       supplierPrice,
       model,
-      supplierId
+      supplierId,
+      isDamaged,
+      damagedReason
     } = req.body;
 
     const existing = await prisma.product.findFirst({
@@ -154,6 +160,8 @@ const updateProduct = async (req, res) => {
         supplierPrice: supplierPrice ? parseFloat(supplierPrice) : 0,
         model: model || null,
         supplierId: supplierId || null,
+        isDamaged: isDamaged !== undefined ? (isDamaged === 'true' || isDamaged === true) : existing.isDamaged,
+        damagedReason: damagedReason !== undefined ? damagedReason : existing.damagedReason,
       },
       include: {
         category: { select: { id: true, name: true } },

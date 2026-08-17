@@ -20,14 +20,16 @@ import {
   MenuItem,
   Select,
   FormControl,
-  InputLabel
+  InputLabel,
+  Chip
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
   Inventory as InventoryIcon,
   TrendingDown as DiscountIcon,
   MoneyOff as MoneyOffIcon,
-  LocalOffer as OfferIcon
+  LocalOffer as OfferIcon,
+  Warning as WarningIcon
 } from '@mui/icons-material';
 import DataTable from '../Components/DataTable';
 import dayjs from 'dayjs';
@@ -118,8 +120,9 @@ const DeadStock = () => {
     fetchSettings();
   }, []);
 
-  // Filter in-stock dead stock products (no sales in last 30 days)
-  const deadStockProducts = products.filter(p => {
+  // Filter in-stock damaged products (marked as damaged OR unsold in last 30 days)
+  const damagedProducts = products.filter(p => {
+    if (p.isDamaged) return true;
     if (p.stock <= 0) return false;
 
     // Find all sales of this product in the last 30 days
@@ -134,9 +137,9 @@ const DeadStock = () => {
   });
 
   // Calculate statistics
-  const totalDeadItems = deadStockProducts.length;
-  const totalDeadQty = deadStockProducts.reduce((sum, p) => sum + p.stock, 0);
-  const totalCapitalLocked = deadStockProducts.reduce((sum, p) => sum + (p.stock * p.price), 0);
+  const totalDamagedItems = damagedProducts.length;
+  const totalDamagedQty = damagedProducts.reduce((sum, p) => sum + (parseFloat(p.stock) || 0), 0);
+  const totalCapitalLocked = damagedProducts.reduce((sum, p) => sum + ((parseFloat(p.stock) || 0) * (parseFloat(p.supplierPrice || p.price) || 0)), 0);
 
   const handleApplyDiscount = async () => {
     if (!targetProduct) return;
@@ -270,7 +273,25 @@ const DeadStock = () => {
   };
 
   const columns = [
-    { id: 'name', label: 'Product Name', sortable: true, cellSx: { fontWeight: 600, color: '#0f172a' } },
+    {
+      id: 'name',
+      label: 'Product Name',
+      sortable: true,
+      render: (row) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography sx={{ fontWeight: 600, color: '#0f172a', fontSize: '0.875rem' }}>
+            {row.name}
+          </Typography>
+          {row.isDamaged && (
+            <Chip
+              label="Damaged"
+              size="small"
+              sx={{ bgcolor: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: '0.68rem', height: 20 }}
+            />
+          )}
+        </Box>
+      )
+    },
     { id: 'barcode', label: 'Barcode', sortable: true, render: (row) => <Typography sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.85rem' }}>{row.barcode}</Typography> },
     {
       id: 'price',
@@ -356,9 +377,14 @@ const DeadStock = () => {
       
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
-          Dead Stock Products
-        </Typography>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
+            Damaged Products
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Track, manage, discount, or dispose damaged and defective stock items.
+          </Typography>
+        </Box>
       </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -369,14 +395,14 @@ const DeadStock = () => {
           <Card sx={{ border: '1px solid #fee2e2', bgcolor: '#fff', borderRadius: 1 }}>
             <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2.5, py: '20px !important' }}>
               <Box sx={{ p: 1.5, bgcolor: '#fef2f2', borderRadius: 1.5, display: 'flex', color: '#ef4444' }}>
-                <OfferIcon sx={{ fontSize: 28 }} />
+                <WarningIcon sx={{ fontSize: 28 }} />
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
-                  Dead Items (Unsold 30+ Days)
+                  Total Damaged Items
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#0f172a' }}>
-                  {totalDeadItems}
+                  {totalDamagedItems}
                 </Typography>
               </Box>
             </CardContent>
@@ -391,10 +417,10 @@ const DeadStock = () => {
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
-                  Total Unsold Stock Qty
+                  Total Damaged Stock Qty
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#0f172a' }}>
-                  {totalDeadQty}
+                  {totalDamagedQty}
                 </Typography>
               </Box>
             </CardContent>
@@ -409,7 +435,7 @@ const DeadStock = () => {
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
-                  Tied-up Capital
+                  Capital in Damaged Stock
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#dc2626' }}>
                   {currency} {totalCapitalLocked.toFixed(2)}
@@ -424,12 +450,12 @@ const DeadStock = () => {
       <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
         <DataTable
           columns={columns}
-          data={deadStockProducts}
+          data={damagedProducts}
           loading={loading}
           selected={selected}
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
-          searchPlaceholder="Search dead stock products..."
+          searchPlaceholder="Search damaged products..."
         />
       </Card>
 

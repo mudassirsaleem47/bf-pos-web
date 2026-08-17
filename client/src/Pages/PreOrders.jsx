@@ -91,6 +91,19 @@ const PreOrders = () => {
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // Quick Add Customer Dialog State
+  const [openAddCustomerDialog, setOpenAddCustomerDialog] = useState(false);
+  const [addCustomerFormData, setAddCustomerFormData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    loyaltyPoints: '0',
+    balance: '0'
+  });
+  const [addCustomerError, setAddCustomerError] = useState('');
+  const [addCustomerLoading, setAddCustomerLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     customerId: '',
     customerName: '',
@@ -110,6 +123,65 @@ const PreOrders = () => {
   // Status Change Menu State
   const [statusMenuAnchor, setStatusMenuAnchor] = useState(null);
   const [targetOrderForStatus, setTargetOrderForStatus] = useState(null);
+
+  const handleAddCustomerSubmit = async (e) => {
+    e.preventDefault();
+    setAddCustomerError('');
+
+    if (!addCustomerFormData.name.trim()) {
+      setAddCustomerError('Name is required');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) return;
+
+    setAddCustomerLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/customers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: addCustomerFormData.name.trim(),
+          phone: addCustomerFormData.phone.trim(),
+          email: addCustomerFormData.email.trim(),
+          address: addCustomerFormData.address.trim(),
+          loyaltyPoints: parseInt(addCustomerFormData.loyaltyPoints) || 0,
+          balance: parseFloat(addCustomerFormData.balance) || 0
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to save customer');
+
+      setSuccessMsg('Customer added successfully!');
+      await fetchDropdowns();
+
+      setFormData(prev => ({
+        ...prev,
+        customerId: data.id,
+        customerName: data.name,
+        customerPhone: data.phone || ''
+      }));
+
+      setOpenAddCustomerDialog(false);
+      setAddCustomerFormData({
+        name: '',
+        phone: '',
+        email: '',
+        address: '',
+        loyaltyPoints: '0',
+        balance: '0'
+      });
+    } catch (err) {
+      setAddCustomerError(err.message || 'Failed to submit customer details');
+    } finally {
+      setAddCustomerLoading(false);
+    }
+  };
 
   const getToken = useCallback(() => {
     const token = localStorage.getItem('token');
@@ -881,51 +953,62 @@ const PreOrders = () => {
             <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1e293b' }}>
               1. Customer Information
             </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
-                <Autocomplete
-                  options={customers}
-                  getOptionLabel={(option) => `${option.name} ${option.phone ? `(${option.phone})` : ''}`}
-                  value={customers.find(c => c.id === formData.customerId) || null}
-                  onChange={(_, newValue) => {
-                    if (newValue) {
-                      setFormData(prev => ({
-                        ...prev,
-                        customerId: newValue.id,
-                        customerName: newValue.name,
-                        customerPhone: newValue.phone || ''
-                      }));
-                    } else {
-                      setFormData(prev => ({ ...prev, customerId: '' }));
-                    }
-                  }}
-                  renderInput={(params) => (
-                    <TextField {...params} label="Select Existing Customer" size="small" placeholder="Search customer..." />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Customer Name *"
-                  size="small"
-                  fullWidth
-                  value={formData.customerName}
-                  onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                  placeholder="Enter customer name"
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Phone Number"
-                  size="small"
-                  fullWidth
-                  value={formData.customerPhone}
-                  onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                  placeholder="0300-1234567"
-                />
-              </Grid>
-            </Grid>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Autocomplete
+                options={customers}
+                getOptionLabel={(option) => `${option.name} ${option.phone ? `(${option.phone})` : ''}`}
+                value={customers.find(c => c.id === formData.customerId) || (formData.customerName ? { id: formData.customerId, name: formData.customerName, phone: formData.customerPhone } : null)}
+                onChange={(event, newValue) => {
+                  if (newValue) {
+                    setFormData(prev => ({
+                      ...prev,
+                      customerId: newValue.id || '',
+                      customerName: newValue.name || '',
+                      customerPhone: newValue.phone || ''
+                    }));
+                  } else {
+                    setFormData(prev => ({
+                      ...prev,
+                      customerId: '',
+                      customerName: '',
+                      customerPhone: ''
+                    }));
+                  }
+                }}
+                renderInput={(params) => (
+                  <TextField 
+                    {...params} 
+                    label="Select Customer" 
+                    size="small" 
+                    placeholder="Search customer name/phone..." 
+                  />
+                )}
+                sx={{ flexGrow: 1 }}
+              />
+              <IconButton 
+                color="primary" 
+                onClick={() => {
+                  setAddCustomerError('');
+                  setAddCustomerFormData({
+                    name: '',
+                    phone: '',
+                    email: '',
+                    address: '',
+                    loyaltyPoints: '0',
+                    balance: '0'
+                  });
+                  setOpenAddCustomerDialog(true);
+                }}
+                sx={{ 
+                  border: '1px solid #e2e8f0', 
+                  borderRadius: 1.5,
+                  p: '8px',
+                  '&:hover': { bgcolor: '#eff6ff', borderColor: '#bfdbfe' } 
+                }}
+              >
+                <AddIcon sx={{ fontSize: 20 }} />
+              </IconButton>
+            </Box>
 
             <Divider sx={{ my: 1 }} />
 
@@ -1241,6 +1324,120 @@ const PreOrders = () => {
             Delete
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Add Customer Dialog */}
+      <Dialog
+        open={openAddCustomerDialog}
+        onClose={() => {
+          if (!addCustomerLoading) {
+            setOpenAddCustomerDialog(false);
+            setAddCustomerError('');
+          }
+        }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+          Add New Customer
+        </DialogTitle>
+        <Divider sx={{ mx: 3 }} />
+        <form onSubmit={handleAddCustomerSubmit}>
+          <DialogContent sx={{ py: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            {addCustomerError && <Alert severity="error">{addCustomerError}</Alert>}
+            <Stack spacing={3}>
+              <TextField
+                label="Customer Name"
+                variant="standard"
+                required
+                fullWidth
+                size="small"
+                value={addCustomerFormData.name}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, name: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Phone Number"
+                variant="standard"
+                fullWidth
+                size="small"
+                value={addCustomerFormData.phone}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, phone: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Email Address"
+                variant="standard"
+                fullWidth
+                type="email"
+                size="small"
+                value={addCustomerFormData.email}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, email: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Home/Billing Address"
+                variant="standard"
+                fullWidth
+                size="small"
+                value={addCustomerFormData.address}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, address: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Loyalty Program Points"
+                variant="standard"
+                fullWidth
+                type="number"
+                size="small"
+                value={addCustomerFormData.loyaltyPoints}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, loyaltyPoints: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+              <TextField
+                label="Balance Owed (Credit)"
+                variant="standard"
+                fullWidth
+                type="number"
+                size="small"
+                value={addCustomerFormData.balance}
+                onChange={(e) => setAddCustomerFormData({ ...addCustomerFormData, balance: e.target.value })}
+                disabled={addCustomerLoading}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => {
+                setOpenAddCustomerDialog(false);
+                setAddCustomerError('');
+                setAddCustomerFormData({
+                  name: '',
+                  phone: '',
+                  email: '',
+                  address: '',
+                  loyaltyPoints: '0',
+                  balance: '0'
+                });
+              }}
+              color="inherit"
+              variant="outlined"
+              disabled={addCustomerLoading}
+              sx={{ borderRadius: 1.5 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={addCustomerLoading}
+              sx={{ borderRadius: 1.5 }}
+            >
+              {addCustomerLoading ? 'Adding...' : 'Add Customer'}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
 
     </Box>

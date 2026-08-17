@@ -114,6 +114,8 @@ model Product {
   supplierId    String?
   supplierPrice Float?     @default(0)
   warehouseId   String?
+  isDamaged     Boolean    @default(false)
+  damagedReason String?
   category      Category?  @relation(fields: [categoryId], references: [id])
   supplier      Supplier?  @relation(fields: [supplierId], references: [id])
   warehouse     Warehouse? @relation(fields: [warehouseId], references: [id])

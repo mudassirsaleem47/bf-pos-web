@@ -20,6 +20,8 @@ import {
   InputLabel,
   Select,
   CircularProgress,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import { Add as AddIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -73,6 +75,7 @@ const EditProduct = () => {
     supplierPrice: '',
     model: '',
     supplierId: '',
+    isDamaged: false,
   });
 
   const getToken = () => {
@@ -172,6 +175,7 @@ const EditProduct = () => {
         supplierPrice: data.supplierPrice !== null ? String(data.supplierPrice) : '',
         model: data.model || '',
         supplierId: data.supplierId || '',
+        isDamaged: Boolean(data.isDamaged),
       });
 
       setOriginalStock(data.stock !== null ? parseFloat(data.stock) : 0);
@@ -268,6 +272,7 @@ const EditProduct = () => {
     fd.append('supplierPrice', formData.supplierPrice ? parseFloat(formData.supplierPrice) : 0);
     fd.append('model', formData.model.trim());
     fd.append('supplierId', formData.supplierId || '');
+    fd.append('isDamaged', formData.isDamaged);
 
     if (formData.imageFile) {
       fd.append('image', formData.imageFile);
@@ -778,6 +783,29 @@ const EditProduct = () => {
                 </FormControl>
               </Box>
             </Box>
+          </Box>
+
+          {/* Damaged Product Checkbox */}
+          <Box sx={{ p: 2, bgcolor: formData.isDamaged ? '#fef2f2' : '#f8fafc', border: `1px solid ${formData.isDamaged ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 1.5 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.isDamaged}
+                  onChange={(e) => setFormData({ ...formData, isDamaged: e.target.checked })}
+                  color="error"
+                />
+              }
+              label={
+                <Box>
+                  <Typography sx={{ fontWeight: 600, color: formData.isDamaged ? '#dc2626' : '#334155', fontSize: '0.9rem' }}>
+                    Mark as Damaged / Defective Product
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Damaged products will appear in the Damaged Products section and won't be sold as regular items.
+                  </Typography>
+                </Box>
+              }
+            />
           </Box>
 
           {/* Action Buttons */}
