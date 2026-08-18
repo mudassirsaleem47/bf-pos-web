@@ -46,6 +46,7 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
     { label: 'Products', path: '/products', icon: ProductsIcon },
     { label: 'Brands', path: '/categories', icon: CategoriesIcon },
     { label: 'Suppliers', path: '/suppliers', icon: SuppliersIcon },
+    { label: 'Supplier Invoices', path: '/suppliers-invoice', icon: SuppliersInvoiceIcon },
     { label: 'Finance', path: '/receivables-payables', icon: LoanIcon },
     { label: 'Customers', path: '/customers', icon: CustomersIcon },
     { label: 'Warehouse', path: '/warehouse', icon: WarehouseIcon },
