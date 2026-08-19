@@ -120,20 +120,9 @@ const DeadStock = () => {
     fetchSettings();
   }, []);
 
-  // Filter in-stock damaged products (marked as damaged OR unsold in last 30 days)
+  // Filter in-stock damaged products (only products marked as damaged)
   const damagedProducts = products.filter(p => {
-    if (p.isDamaged) return true;
-    if (p.stock <= 0) return false;
-
-    // Find all sales of this product in the last 30 days
-    const limitDate = dayjs().subtract(30, 'day');
-    const hasRecentSale = sales.some(sale => {
-      const saleDate = dayjs(sale.createdAt);
-      if (saleDate.isBefore(limitDate)) return false;
-      return sale.items.some(item => item.productId === p.id);
-    });
-
-    return !hasRecentSale;
+    return Boolean(p.isDamaged) && (parseFloat(p.stock) > 0);
   });
 
   // Calculate statistics
@@ -251,7 +240,7 @@ const DeadStock = () => {
       });
 
       await Promise.all(promises);
-      setSuccessMsg('Bulk disposed selected dead stock products successfully.');
+      setSuccessMsg('Bulk disposed selected damaged products successfully.');
       fetchData();
       setOpenDisposeDialog(false);
       setSelected([]);
