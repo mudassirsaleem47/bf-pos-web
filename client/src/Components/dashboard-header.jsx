@@ -162,7 +162,12 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
           {/* Simple Search bar with active width transition */}
           <TextField
             size="small"
-            placeholder="Search..."
+            placeholder="Search products..."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && e.target.value.trim()) {
+                navigate(`/products?search=${encodeURIComponent(e.target.value.trim())}`);
+              }
+            }}
             slotProps={{
               input: {
                 startAdornment: (
@@ -221,8 +226,8 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
             slotProps={{
               paper: {
                 sx: {
-                  width: 320,
-                  maxHeight: 400,
+                  width: 340,
+                  maxHeight: 420,
                   borderRadius: 2,
                   boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
                   border: '1px solid #e2e8f0',
@@ -235,8 +240,11 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a' }}>
                 Notifications ({notifications.length})
               </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                Click to open/edit
+              </Typography>
             </Box>
-            <List sx={{ p: 0, maxHeight: 340, overflowY: 'auto' }}>
+            <List sx={{ p: 0, maxHeight: 350, overflowY: 'auto' }}>
               {notifications.length === 0 ? (
                 <Box sx={{ py: 4, px: 2, textAlign: 'center' }}>
                   <Typography variant="body2" color="text.secondary">
@@ -244,30 +252,63 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
                   </Typography>
                 </Box>
               ) : (
-                notifications.map((n, idx) => (
-                  <React.Fragment key={n.id}>
-                    {idx > 0 && <Divider />}
-                    <ListItem sx={{ alignItems: 'flex-start', py: 1.5, px: 2 }}>
-                      <ListItemIcon sx={{ minWidth: 32, mt: 0.5 }}>
-                        {n.type === 'low-stock' && <ProductIcon sx={{ color: '#f59e0b', fontSize: 18 }} />}
-                        {n.type === 'expiry' && <ErrorIcon sx={{ color: n.severity === 'error' ? '#ef4444' : '#f59e0b', fontSize: 18 }} />}
-                        {n.type === 'loan' && <LoanIcon sx={{ color: '#ef4444', fontSize: 18 }} />}
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={
-                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#0f172a', fontSize: '0.825rem' }}>
-                            {n.title}
-                          </Typography>
-                        }
-                        secondary={
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.4, fontSize: '0.72rem' }}>
-                            {n.message}
-                          </Typography>
-                        }
-                      />
-                    </ListItem>
-                  </React.Fragment>
-                ))
+                notifications.map((n, idx) => {
+                  const prodId = n.productId || (n.id ? n.id.replace('low-stock-', '').replace('expiry-', '') : null);
+                  const isProductAlert = n.type === 'low-stock' || n.type === 'expiry';
+
+                  return (
+                    <React.Fragment key={n.id}>
+                      {idx > 0 && <Divider />}
+                      <ListItem
+                        button
+                        onClick={() => {
+                          handleCloseNotifications();
+                          if (isProductAlert && prodId) {
+                            navigate(`/products/edit/${prodId}`);
+                          } else if (n.type === 'loan') {
+                            navigate('/receivables-payables');
+                          }
+                        }}
+                        sx={{
+                          alignItems: 'flex-start',
+                          py: 1.5,
+                          px: 2,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          '&:hover': {
+                            bgcolor: '#f8fafc',
+                            '& .MuiTypography-root': { color: '#2563eb' }
+                          }
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: 32, mt: 0.5 }}>
+                          {n.type === 'low-stock' && <ProductIcon sx={{ color: '#f59e0b', fontSize: 18 }} />}
+                          {n.type === 'expiry' && <ErrorIcon sx={{ color: n.severity === 'error' ? '#ef4444' : '#f59e0b', fontSize: 18 }} />}
+                          {n.type === 'loan' && <LoanIcon sx={{ color: '#ef4444', fontSize: 18 }} />}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '0.825rem' }}>
+                                {n.title}
+                              </Typography>
+                              {isProductAlert && (
+                                <Typography variant="caption" sx={{ color: '#2563eb', fontWeight: 600, fontSize: '0.7rem' }}>
+                                  Edit ↗
+                                </Typography>
+                              )}
+                            </Box>
+                          }
+                          secondary={
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.4, fontSize: '0.72rem' }}>
+                              {n.message}
+                            </Typography>
+                          }
+                        />
+                      </ListItem>
+                    </React.Fragment>
+                  );
+                })
               )}
             </List>
           </Popover>

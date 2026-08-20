@@ -262,12 +262,30 @@ const Transaction = () => {
       doc.rect(totalsX, y, totalsW, 9);
     };
 
-    drawTotalRow('Subtotal', (sale.totalAmount + sale.discount - sale.tax).toFixed(2), totalsY, [255, 255, 255], [15, 23, 42]);
-    drawTotalRow('Discount Given', sale.discount.toFixed(2), totalsY + 9, [254, 242, 242], [185, 28, 28]);
-    drawTotalRow('Tax Collected', sale.tax.toFixed(2), totalsY + 18, [255, 255, 255], [15, 23, 42]);
-    drawTotalRow('Grand Total', sale.totalAmount.toFixed(2), totalsY + 27, [248, 250, 252], [15, 23, 42]);
-    drawTotalRow('Paid Amount', sale.paidAmount.toFixed(2), totalsY + 36, [240, 253, 244], [21, 128, 61]);
-    drawTotalRow('Cash Change', sale.change.toFixed(2), totalsY + 45, [240, 253, 244], [21, 128, 61]);
+    const taxVal = sale.tax || 0;
+    const shippingVal = sale.shipping || 0;
+    const subtotalVal = sale.totalAmount + sale.discount - taxVal - shippingVal;
+
+    let curY = totalsY;
+    drawTotalRow('Subtotal', subtotalVal.toFixed(2), curY, [255, 255, 255], [15, 23, 42]);
+    curY += 9;
+    if (sale.discount > 0) {
+      drawTotalRow('Discount Given', sale.discount.toFixed(2), curY, [254, 242, 242], [185, 28, 28]);
+      curY += 9;
+    }
+    if (taxVal > 0) {
+      drawTotalRow('Tax Collected', taxVal.toFixed(2), curY, [255, 255, 255], [15, 23, 42]);
+      curY += 9;
+    }
+    if (shippingVal > 0) {
+      drawTotalRow('Shipping Fee', shippingVal.toFixed(2), curY, [240, 249, 255], [2, 132, 199]);
+      curY += 9;
+    }
+    drawTotalRow('Grand Total', sale.totalAmount.toFixed(2), curY, [248, 250, 252], [15, 23, 42]);
+    curY += 9;
+    drawTotalRow('Paid Amount', sale.paidAmount.toFixed(2), curY, [240, 253, 244], [21, 128, 61]);
+    curY += 9;
+    drawTotalRow('Cash Change', sale.change.toFixed(2), curY, [240, 253, 244], [21, 128, 61]);
 
     // Footer note
     const pageH = doc.internal.pageSize.getHeight();
@@ -552,13 +570,14 @@ const Transaction = () => {
               {/* Summary calculation breakdown */}
               <Box sx={{ border: '1px solid #e2e8f0', borderRadius: 1.5, overflow: 'hidden' }}>
                 {[
-                  { label: 'Subtotal:', value: (activeSale.totalAmount + activeSale.discount - activeSale.tax).toFixed(2) },
-                  { label: 'Discount Given:', value: activeSale.discount.toFixed(2), color: '#dc2626' },
-                  { label: 'Sales Tax:', value: activeSale.tax.toFixed(2) },
-                  { label: 'Grand Total:', value: activeSale.totalAmount.toFixed(2), bold: true },
-                  { label: 'Amount Paid:', value: activeSale.paidAmount.toFixed(2), color: '#16a34a' },
-                  { label: 'Cash Change:', value: activeSale.change.toFixed(2), color: '#16a34a' }
-                ].map((row, idx) => (
+                  { label: 'Subtotal:', value: (activeSale.totalAmount + (activeSale.discount || 0) - (activeSale.tax || 0) - (activeSale.shipping || 0)).toFixed(2) },
+                  ...(parseFloat(activeSale.discount || 0) > 0 ? [{ label: 'Discount Given:', value: parseFloat(activeSale.discount).toFixed(2), color: '#dc2626' }] : []),
+                  ...(parseFloat(activeSale.tax || 0) > 0 ? [{ label: 'Sales Tax:', value: parseFloat(activeSale.tax).toFixed(2) }] : []),
+                  ...(parseFloat(activeSale.shipping || 0) > 0 ? [{ label: 'Shipping Fee:', value: parseFloat(activeSale.shipping).toFixed(2), color: '#0284c7' }] : []),
+                  { label: 'Grand Total:', value: parseFloat(activeSale.totalAmount).toFixed(2), bold: true },
+                  { label: 'Amount Paid:', value: parseFloat(activeSale.paidAmount).toFixed(2), color: '#16a34a' },
+                  { label: 'Cash Change:', value: parseFloat(activeSale.change).toFixed(2), color: '#16a34a' }
+                ].map((row, idx, arr) => (
                   <Box
                     key={idx}
                     sx={{
@@ -566,7 +585,7 @@ const Transaction = () => {
                       justifyContent: 'space-between',
                       px: 2.5,
                       py: 1.25,
-                      borderBottom: idx === 5 ? 'none' : '1px solid #f1f5f9',
+                      borderBottom: idx === arr.length - 1 ? 'none' : '1px solid #f1f5f9',
                       bgcolor: row.bold ? '#f8fafc' : 'transparent'
                     }}
                   >

@@ -31,7 +31,8 @@ import {
   Report as DeadStockIcon,
   BarChart as ReportsIcon,
   AccountBalanceWallet as ExpensesIcon,
-  PendingActions as PreOrderIcon
+  PendingActions as PreOrderIcon,
+  LocalShipping as ShippingIcon
 } from '@mui/icons-material';
 
 
@@ -49,6 +50,7 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
     { label: 'Supplier Invoices', path: '/suppliers-invoice', icon: SuppliersInvoiceIcon },
     { label: 'Finance', path: '/receivables-payables', icon: LoanIcon },
     { label: 'Customers', path: '/customers', icon: CustomersIcon },
+    { label: 'Shippings', path: '/shippings', icon: ShippingIcon },
     { label: 'Warehouse', path: '/warehouse', icon: WarehouseIcon },
     { label: 'Expired Products', path: '/expired-products', icon: ExpiredProductsIcon },
     { label: 'Damaged Products', path: '/dead-stock', icon: DeadStockIcon },

@@ -72,11 +72,11 @@ const getNotifications = async (req, res) => {
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(today.getDate() + 30);
 
-    const [lowStock, expired, overdueLoans] = await Promise.all([
-      // 1. Low stock products (stock <= 5)
+    const [allProducts, expired, overdueLoans] = await Promise.all([
+      // 1. Products for low stock check
       prisma.product.findMany({
-        where: { stock: { lte: 5 }, userId: req.user.id },
-        select: { id: true, name: true, stock: true, unit: true }
+        where: { userId: req.user.id },
+        select: { id: true, name: true, stock: true, unit: true, lowStockAlert: true }
       }),
       // 2. Expired or expiring soon (within 30 days)
       prisma.product.findMany({
@@ -102,9 +102,12 @@ const getNotifications = async (req, res) => {
     // Format them into a single list of notification objects
     const list = [];
 
+    const lowStock = allProducts.filter(p => (parseFloat(p.stock) || 0) <= (parseFloat(p.lowStockAlert) || 5));
+
     lowStock.forEach(p => {
       list.push({
         id: `low-stock-${p.id}`,
+        productId: p.id,
         type: 'low-stock',
         title: 'Low Stock Alert',
         message: `${p.name} is running low on stock (${p.stock} ${p.unit} remaining).`,
@@ -117,6 +120,7 @@ const getNotifications = async (req, res) => {
       const isExpired = new Date(p.expiryDate) < today;
       list.push({
         id: `expiry-${p.id}`,
+        productId: p.id,
         type: 'expiry',
         title: isExpired ? 'Product Expired' : 'Product Expiring Soon',
         message: isExpired

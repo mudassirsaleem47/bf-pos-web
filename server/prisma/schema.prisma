@@ -135,6 +135,7 @@ model SaleTransaction {
   change      Float      @default(0)
   discount    Float      @default(0)
   tax         Float      @default(0)
+  shipping    Float      @default(0)
   customerId  String?
   customer    Customer?  @relation(fields: [customerId], references: [id])
   createdAt   DateTime   @default(now())

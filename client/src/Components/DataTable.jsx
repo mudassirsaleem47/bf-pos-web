@@ -62,15 +62,65 @@ const DataTable = ({
   onSelectedChange = () => { },
   bulkActions = [],
   searchPlaceholder = 'Search...',
-  renderExpandedRow
+  renderExpandedRow,
+  storageKey = '',
+  initialSearchQuery = ''
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (initialSearchQuery) return initialSearchQuery;
+    if (storageKey) {
+      return sessionStorage.getItem(`${storageKey}_search`) || '';
+    }
+    return '';
+  });
   const [orderBy, setOrderBy] = useState('');
   const [order, setOrder] = useState('asc');
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [page, setPage] = useState(() => {
+    if (storageKey) {
+      const stored = sessionStorage.getItem(`${storageKey}_page`);
+      return stored ? parseInt(stored, 10) : 0;
+    }
+    return 0;
+  });
+  const [rowsPerPage, setRowsPerPage] = useState(() => {
+    if (storageKey) {
+      const stored = sessionStorage.getItem(`${storageKey}_rpp`);
+      return stored ? parseInt(stored, 10) : 10;
+    }
+    return 10;
+  });
   const [copySnackbar, setCopySnackbar] = useState(false);
   const [expandedRows, setExpandedRows] = useState({});
+
+  // Sync initialSearchQuery if prop changes externally
+  useEffect(() => {
+    if (initialSearchQuery !== undefined && initialSearchQuery !== null && initialSearchQuery !== '') {
+      setSearchQuery(initialSearchQuery);
+    }
+  }, [initialSearchQuery]);
+
+  // Persist search query, page, and rowsPerPage in sessionStorage
+  useEffect(() => {
+    if (storageKey) {
+      if (searchQuery) {
+        sessionStorage.setItem(`${storageKey}_search`, searchQuery);
+      } else {
+        sessionStorage.removeItem(`${storageKey}_search`);
+      }
+    }
+  }, [storageKey, searchQuery]);
+
+  useEffect(() => {
+    if (storageKey) {
+      sessionStorage.setItem(`${storageKey}_page`, page.toString());
+    }
+  }, [storageKey, page]);
+
+  useEffect(() => {
+    if (storageKey) {
+      sessionStorage.setItem(`${storageKey}_rpp`, rowsPerPage.toString());
+    }
+  }, [storageKey, rowsPerPage]);
 
   const toggleRowExpand = (id) => {
     setExpandedRows(prev => ({
@@ -253,15 +303,48 @@ const DataTable = ({
     doc.save('export.pdf');
   };
 
-  // 1. Search / Filter logic
+  // 1. Search / Filter logic (Word-based multi-token substring search)
+  const extractSearchableText = (row) => {
+    let text = '';
+    const collectStrings = (obj) => {
+      if (obj === null || obj === undefined) return;
+      if (typeof obj === 'string' || typeof obj === 'number') {
+        text += ' ' + obj;
+        return;
+      }
+      if (typeof obj === 'object') {
+        for (const key of Object.keys(obj)) {
+          if (key === 'id' || key === 'imagePath' || key === 'createdAt' || key === 'updatedAt') continue;
+          collectStrings(obj[key]);
+        }
+      }
+    };
+    collectStrings(row);
+
+    if (columns && Array.isArray(columns)) {
+      for (const col of columns) {
+        if (col.id === 'actions') continue;
+        if (col.render) {
+          try {
+            const rendered = col.render(row);
+            if (typeof rendered === 'string' || typeof rendered === 'number') {
+              text += ' ' + rendered;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+    return text.toLowerCase();
+  };
+
   const filteredData = data.filter((row) => {
-    if (!searchQuery) return true;
-    return Object.keys(row).some((key) => {
-      if (key === 'id' || key === 'createdAt' || key === 'updatedAt') return false;
-      const value = row[key];
-      if (value === null || value === undefined) return false;
-      return String(value).toLowerCase().includes(searchQuery.toLowerCase());
-    });
+    if (!searchQuery || !searchQuery.trim()) return true;
+    const words = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return true;
+
+    const searchableText = extractSearchableText(row);
+    // Every word must be present somewhere in searchable text
+    return words.every(word => searchableText.includes(word));
   });
 
   // 2. Sort logic

@@ -24,6 +24,7 @@ import ReceivablesPayables from './Pages/ReceivablesPayables.jsx';
 import Staff from './Pages/Staff.jsx';
 import Reports from './Pages/Reports.jsx';
 import PreOrders from './Pages/PreOrders.jsx';
+import Shippings from './Pages/Shippings.jsx';
 // Define a decent, flat theme with Inter font
 const theme = createTheme({
   typography: {
@@ -117,6 +118,7 @@ const App = () => {
             <Route path="suppliers" element={<Suppliers />} />
             <Route path="suppliers-invoice" element={<SuppliersInvoice />} />
             <Route path="customers" element={<Customers />} />
+            <Route path="shippings" element={<Shippings />} />
             <Route path="invoice" element={<Transaction />} />
             <Route path="transaction" element={<Transaction />} />
             <Route path="expenses" element={<Expenses />} />

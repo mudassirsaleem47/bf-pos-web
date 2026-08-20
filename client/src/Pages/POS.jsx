@@ -79,6 +79,7 @@ const POS = () => {
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [discountAmount, setDiscountAmount] = useState(0);
+  const [shippingAmount, setShippingAmount] = useState('');
   const [cash, setCash] = useState('');
   const [settings, setSettings] = useState({
     storeName: 'My Store',
@@ -724,18 +725,33 @@ const POS = () => {
       };
 
       const taxVal = saleToPrint.tax || 0;
-      const subtotalVal = saleToPrint ? (saleToPrint.totalAmount + saleToPrint.discount - taxVal) : subtotal;
+      const shippingVal = saleToPrint && saleToPrint.shipping !== undefined ? (parseFloat(saleToPrint.shipping) || 0) : shippingFee;
+      const subtotalVal = saleToPrint ? (saleToPrint.totalAmount + saleToPrint.discount - taxVal - shippingVal) : subtotal;
       const discountVal = saleToPrint ? saleToPrint.discount : (totalItemDiscount + finalDiscount);
       const totalVal = saleToPrint ? saleToPrint.totalAmount : total;
       const paidVal = saleToPrint ? saleToPrint.paidAmount : paid;
       const changeVal = saleToPrint ? saleToPrint.change : change;
 
-      drawTotalRow('Subtotal', subtotalVal.toFixed(2), totalsY, [255, 255, 255], [15, 23, 42]);
-      drawTotalRow('Discount Given', discountVal.toFixed(2), totalsY + 9, [254, 242, 242], [185, 28, 28]);
-      drawTotalRow('Tax Collected', taxVal.toFixed(2), totalsY + 18, [255, 255, 255], [15, 23, 42]);
-      drawTotalRow('Grand Total', totalVal.toFixed(2), totalsY + 27, [248, 250, 252], [15, 23, 42]);
-      drawTotalRow('Paid Amount', paidVal.toFixed(2), totalsY + 36, [240, 253, 244], [21, 128, 61]);
-      drawTotalRow('Cash Change', changeVal.toFixed(2), totalsY + 45, [240, 253, 244], [21, 128, 61]);
+      let currentTotalsY = totalsY;
+      drawTotalRow('Subtotal', subtotalVal.toFixed(2), currentTotalsY, [255, 255, 255], [15, 23, 42]);
+      currentTotalsY += 9;
+      if (discountVal > 0) {
+        drawTotalRow('Discount Given', discountVal.toFixed(2), currentTotalsY, [254, 242, 242], [185, 28, 28]);
+        currentTotalsY += 9;
+      }
+      if (taxVal > 0) {
+        drawTotalRow('Tax Collected', taxVal.toFixed(2), currentTotalsY, [255, 255, 255], [15, 23, 42]);
+        currentTotalsY += 9;
+      }
+      if (shippingVal > 0) {
+        drawTotalRow('Shipping Fee', shippingVal.toFixed(2), currentTotalsY, [240, 249, 255], [2, 132, 199]);
+        currentTotalsY += 9;
+      }
+      drawTotalRow('Grand Total', totalVal.toFixed(2), currentTotalsY, [248, 250, 252], [15, 23, 42]);
+      currentTotalsY += 9;
+      drawTotalRow('Paid Amount', paidVal.toFixed(2), currentTotalsY, [240, 253, 244], [21, 128, 61]);
+      currentTotalsY += 9;
+      drawTotalRow('Cash Change', changeVal.toFixed(2), currentTotalsY, [240, 253, 244], [21, 128, 61]);
 
       // Footer note
       const pageH = doc.internal.pageSize.getHeight();
@@ -943,6 +959,7 @@ const POS = () => {
     setProductInputValue('');
     setQuantity(1);
     setDiscountAmount(0);
+    setShippingAmount('');
     setCash('');
     setLastSale(null);
     setSelectedCustomer(null);
@@ -957,7 +974,8 @@ const POS = () => {
   }, 0);
   const totalItemDiscount = cart.reduce((sum, item) => sum + (parseFloat(item.discount) || 0), 0);
   const finalDiscount = parseFloat(discountAmount) || 0;
-  const total = Math.max(0, subtotal - totalItemDiscount - finalDiscount);
+  const shippingFee = parseFloat(shippingAmount) || 0;
+  const total = Math.max(0, subtotal - totalItemDiscount - finalDiscount + shippingFee);
   const paid = parseFloat(cash) || 0;
   const change = Math.max(0, paid - total);
 
@@ -998,6 +1016,7 @@ const POS = () => {
           totalAmount: total,
           paidAmount: paid,
           discount: totalItemDiscount + finalDiscount,
+          shipping: shippingFee,
           tax: 0,
           customerId: selectedCustomer?.id || null,
         }),
@@ -1019,6 +1038,7 @@ const POS = () => {
       setCart([]);
       setCash('');
       setDiscountAmount(0);
+      setShippingAmount('');
       setSelectedCustomer(null);
     } catch (err) {
       setError(err.message || 'Failed to process checkout');
@@ -1073,12 +1093,18 @@ const POS = () => {
         <div className="thermal-receipt-divider" />
         <div className="thermal-receipt-flex">
           <span>Subtotal:</span>
-          <span>{settings.currency}{((lastSale ? (lastSale.totalAmount + lastSale.discount) : (total + finalDiscount))).toFixed(2)}</span>
+          <span>{settings.currency}{((lastSale ? (lastSale.totalAmount + lastSale.discount - (lastSale.shipping || 0)) : subtotal)).toFixed(2)}</span>
         </div>
         {(lastSale ? lastSale.discount : finalDiscount) > 0 && (
           <div className="thermal-receipt-flex">
             <span>Discount:</span>
             <span>-{settings.currency}{(lastSale ? lastSale.discount : finalDiscount).toFixed(2)}</span>
+          </div>
+        )}
+        {(lastSale ? (lastSale.shipping || 0) : shippingFee) > 0 && (
+          <div className="thermal-receipt-flex">
+            <span>Shipping:</span>
+            <span>+{settings.currency}{parseFloat(lastSale ? (lastSale.shipping || 0) : shippingFee).toFixed(2)}</span>
           </div>
         )}
         <div className="thermal-receipt-flex" style={{ fontWeight: 'bold' }}>
@@ -1189,10 +1215,12 @@ const POS = () => {
                   }}
                   filterOptions={(options, state) => {
                     const query = state.inputValue.toLowerCase().trim();
-                    return options.filter(option => 
-                      option.name.toLowerCase().includes(query) || 
-                      (option.barcode && option.barcode.toLowerCase().includes(query))
-                    );
+                    if (!query) return options;
+                    const words = query.split(/\s+/).filter(Boolean);
+                    return options.filter(option => {
+                      const searchable = `${option.name || ''} ${option.barcode || ''} ${option.category?.name || ''} ${option.model || ''} ${option.detail || ''} ${option.rackNo || ''}`.toLowerCase();
+                      return words.every(word => searchable.includes(word));
+                    });
                   }}
                   renderInput={(params) => (
                     <TextField 
@@ -1420,12 +1448,36 @@ const POS = () => {
                   }}
                 />
 
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" color="text.secondary">Discount Amt:</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#b91c1c' }}>
-                    -{settings.currency}{(totalItemDiscount + finalDiscount).toFixed(2)}
-                  </Typography>
-                </Box>
+                <TextField
+                  label="Shipping / Delivery Rate (Amt)"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  value={shippingAmount}
+                  onChange={(e) => setShippingAmount(e.target.value)}
+                  placeholder="0.00"
+                  slotProps={{
+                    htmlInput: { min: 0 }
+                  }}
+                />
+
+                {(totalItemDiscount + finalDiscount) > 0 && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">Discount Amt:</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#b91c1c' }}>
+                      -{settings.currency}{(totalItemDiscount + finalDiscount).toFixed(2)}
+                    </Typography>
+                  </Box>
+                )}
+
+                {shippingFee > 0 && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">Shipping Fee:</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#0284c7' }}>
+                      +{settings.currency}{shippingFee.toFixed(2)}
+                    </Typography>
+                  </Box>
+                )}
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 1, borderTop: '1px solid #f1f5f9' }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Total:</Typography>

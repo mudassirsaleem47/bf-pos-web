@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -23,6 +23,7 @@ import {
   Paper,
   TextField,
   InputLabel,
+  Chip
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -47,6 +48,9 @@ const API_URL = (window.location.hostname === 'localhost' || window.location.hos
 
 const Products = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
+
   const [products, setProducts] = useState([]);
   const [currency, setCurrency] = useState('Rs.');
   const [dateFilter, setDateFilter] = useState('all');
@@ -58,6 +62,7 @@ const Products = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [deleteIds, setDeleteIds] = useState([]);
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
   // Brand (Category) States
   const [categories, setCategories] = useState([]);
@@ -618,7 +623,40 @@ const Products = () => {
       sortable: true,
       render: (row) => `Rs. ${parseFloat(row.supplierPrice || 0).toFixed(2)}`
     },
-    { id: 'stock', label: 'Stock', sortable: true },
+    {
+      id: 'stock',
+      label: 'Stock',
+      sortable: true,
+      render: (row) => {
+        const isLow = (Number(row.stock) || 0) <= (Number(row.lowStockAlert) || 5);
+        return (
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2" sx={{ fontWeight: 600, color: isLow ? '#dc2626' : '#0f172a' }}>
+              {row.stock}
+            </Typography>
+            {isLow && (
+              <Chip
+                label="⚠️ Low (Edit)"
+                size="small"
+                color="error"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/products/edit/${row.id}`);
+                }}
+                sx={{
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: '0.68rem',
+                  height: 20,
+                  '&:hover': { bgcolor: '#b91c1c' }
+                }}
+                title="Low stock alert! Click to edit product stock and settings"
+              />
+            )}
+          </Stack>
+        );
+      }
+    },
     { id: 'unit', label: 'Unit', sortable: true },
     {
       id: 'category',
@@ -668,10 +706,12 @@ const Products = () => {
     }
   ];
 
-  // Filter products based on selected Category/Brand
-  const filteredProducts = selectedCategory === 'all'
-    ? products
-    : products.filter(p => p.categoryId === selectedCategory);
+  // Filter products based on selected Category/Brand and Low Stock toggle
+  const filteredProducts = products.filter(p => {
+    if (selectedCategory !== 'all' && p.categoryId !== selectedCategory) return false;
+    if (showLowStockOnly && (Number(p.stock) || 0) > (Number(p.lowStockAlert) || 5)) return false;
+    return true;
+  });
 
   // Calculate statistics from the filtered products state
   const totalProducts = filteredProducts.length;
@@ -933,11 +973,12 @@ const Products = () => {
         {/* Card 4: Low Stock */}
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card
+            onClick={() => setShowLowStockOnly(prev => !prev)}
             sx={{
-              background: 'linear-gradient(135deg, #be123c 0%, #f43f5e 100%)',
+              background: showLowStockOnly ? 'linear-gradient(135deg, #991b1b 0%, #dc2626 100%)' : 'linear-gradient(135deg, #be123c 0%, #f43f5e 100%)',
               color: '#ffffff',
               borderRadius: '12px',
-              border: 'none',
+              border: showLowStockOnly ? '3px solid #fef08a' : 'none',
               position: 'relative',
               overflow: 'hidden',
               height: 115,
@@ -946,18 +987,21 @@ const Products = () => {
               justifyContent: 'center',
               pl: 3,
               pr: 2,
-              boxShadow: '0 4px 20px 0 rgba(244, 63, 94, 0.15)',
-              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+              cursor: 'pointer',
+              boxShadow: showLowStockOnly ? '0 0 0 2px #dc2626, 0 8px 30px 0 rgba(220, 38, 38, 0.4)' : '0 4px 20px 0 rgba(244, 63, 94, 0.15)',
+              transition: 'all 0.25s ease',
               '&:hover': {
-                boxShadow: '0 8px 30px 0 rgba(244, 63, 94, 0.25)',
+                transform: 'translateY(-2px)',
+                boxShadow: '0 8px 30px 0 rgba(244, 63, 94, 0.35)',
               }
             }}
+            title="Click to toggle filtering Low Stock items"
           >
             <Typography variant="h4" sx={{ fontWeight: 800, fontSize: '1.85rem', lineHeight: 1.2 }}>
               {formatNumber(lowStockCount)}
             </Typography>
             <Typography variant="caption" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.85)', mt: 0.5, letterSpacing: '0.75px', fontSize: '0.72rem', textTransform: 'uppercase' }}>
-              Low Stock Items
+              Low Stock Items {showLowStockOnly ? '• [FILTERED ON]' : ''}
             </Typography>
             <WarningIcon
               sx={{
@@ -972,6 +1016,20 @@ const Products = () => {
         </Grid>
       </Grid>
 
+      {showLowStockOnly && (
+        <Alert
+          severity="warning"
+          action={
+            <Button color="inherit" size="small" onClick={() => setShowLowStockOnly(false)}>
+              Show All Products
+            </Button>
+          }
+          sx={{ mb: 1, borderRadius: 2 }}
+        >
+          Filtering by <strong>Low Stock Items</strong> only ({filteredProducts.length} items). Click on the card or 'Show All Products' to clear.
+        </Alert>
+      )}
+
       {/* Content */}
       <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
         <DataTable
@@ -981,7 +1039,9 @@ const Products = () => {
           selected={selected}
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
-          searchPlaceholder="Search products..."
+          searchPlaceholder="Search by name, barcode, brand, details..."
+          storageKey="products_table"
+          initialSearchQuery={urlSearch}
         />
       </Card>
 

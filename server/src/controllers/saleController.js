@@ -28,7 +28,7 @@ const getSales = async (req, res) => {
 // @route POST /api/sales
 const createSale = async (req, res) => {
   try {
-    const { items, totalAmount, paidAmount, discount, tax, customerId } = req.body;
+    const { items, totalAmount, paidAmount, discount, tax, shipping, customerId } = req.body;
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Items are required' });
     }
@@ -74,6 +74,7 @@ const createSale = async (req, res) => {
         change,
         discount: parseFloat(discount) || 0,
         tax: parseFloat(tax) || 0,
+        shipping: parseFloat(shipping) || 0,
         customerId: customerId || null,
         userId: req.user.id,
         items: {
