@@ -129,16 +129,111 @@ const DataTable = ({
     }));
   };
 
-  // Visibility and Reordering States
-  const [visibleColumns, setVisibleColumns] = useState(() => columns.map(c => c.id));
-  const [columnOrder, setColumnOrder] = useState(() => columns.map(c => c.id));
+  // Storage key for column preferences
+  const getColStorageKey = () => {
+    if (storageKey) return `dt_${storageKey}`;
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.replace(/[^a-zA-Z0-9]/g, '_');
+      const colSignature = columns.map(c => c.id).sort().join('_');
+      return `dt_cols_${path}_${colSignature}`;
+    }
+    return 'dt_cols_default';
+  };
+
+  // Visibility and Reordering States with localStorage persistence
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const key = getColStorageKey();
+    try {
+      const stored = localStorage.getItem(`${key}_visible`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const allColIds = columns.map(c => c.id);
+          const valid = parsed.filter(id => allColIds.includes(id));
+          if (allColIds.includes('actions') && !valid.includes('actions')) {
+            valid.push('actions');
+          }
+          if (valid.length > 0) return valid;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load visible columns from localStorage', e);
+    }
+    return columns.map(c => c.id);
+  });
+
+  const [columnOrder, setColumnOrder] = useState(() => {
+    const key = getColStorageKey();
+    try {
+      const stored = localStorage.getItem(`${key}_order`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const allColIds = columns.map(c => c.id);
+          const ordered = parsed.filter(id => allColIds.includes(id));
+          allColIds.forEach(id => {
+            if (!ordered.includes(id)) ordered.push(id);
+          });
+          if (ordered.length > 0) return ordered;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load column order from localStorage', e);
+    }
+    return columns.map(c => c.id);
+  });
+
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
 
-  // Sync columns if prop changes
+  // Sync columns if prop changes without wiping out user preferences
   useEffect(() => {
-    setVisibleColumns(columns.map(c => c.id));
-    setColumnOrder(columns.map(c => c.id));
-  }, [columns]);
+    const key = getColStorageKey();
+    const allColIds = columns.map(c => c.id);
+    if (allColIds.length === 0) return;
+
+    try {
+      const storedVis = localStorage.getItem(`${key}_visible`);
+      if (storedVis) {
+        const parsed = JSON.parse(storedVis);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const valid = parsed.filter(id => allColIds.includes(id));
+          if (allColIds.includes('actions') && !valid.includes('actions')) {
+            valid.push('actions');
+          }
+          // If any new columns exist that were never seen before, include them by default
+          allColIds.forEach(id => {
+            if (!parsed.includes(id) && !valid.includes(id)) {
+              valid.push(id);
+            }
+          });
+          setVisibleColumns(valid);
+        } else {
+          setVisibleColumns(allColIds);
+        }
+      } else {
+        setVisibleColumns(allColIds);
+      }
+
+      const storedOrd = localStorage.getItem(`${key}_order`);
+      if (storedOrd) {
+        const parsed = JSON.parse(storedOrd);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const ordered = parsed.filter(id => allColIds.includes(id));
+          allColIds.forEach(id => {
+            if (!ordered.includes(id)) ordered.push(id);
+          });
+          setColumnOrder(ordered);
+        } else {
+          setColumnOrder(allColIds);
+        }
+      } else {
+        setColumnOrder(allColIds);
+      }
+    } catch (e) {
+      setVisibleColumns(allColIds);
+      setColumnOrder(allColIds);
+    }
+  }, [storageKey, columns.map(c => c.id).join(',')]);
 
   // Reset page to 0 when search query changes
   useEffect(() => {
@@ -201,16 +296,37 @@ const DataTable = ({
     setPage(0);
   };
 
-  // Toggle visible columns
+  // Toggle visible columns and persist to localStorage
   const handleToggleColumn = (columnId) => {
-    setVisibleColumns(prev =>
-      prev.includes(columnId)
+    setVisibleColumns(prev => {
+      const updated = prev.includes(columnId)
         ? prev.filter(id => id !== columnId)
-        : [...prev, columnId]
-    );
+        : [...prev, columnId];
+      try {
+        const key = getColStorageKey();
+        localStorage.setItem(`${key}_visible`, JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
   };
 
-  // Native HTML5 Drag and Drop Column Reordering Handlers
+  // Reset columns to default
+  const handleResetColumns = () => {
+    const allColIds = columns.map(c => c.id);
+    setVisibleColumns(allColIds);
+    setColumnOrder(allColIds);
+    try {
+      const key = getColStorageKey();
+      localStorage.removeItem(`${key}_visible`);
+      localStorage.removeItem(`${key}_order`);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Native HTML5 Drag and Drop Column Reordering Handlers with localStorage persistence
   const handleDragStart = (e, columnId) => {
     e.dataTransfer.setData('text/plain', columnId);
   };
@@ -222,16 +338,23 @@ const DataTable = ({
   const handleDrop = (e, targetColumnId) => {
     e.preventDefault();
     const sourceColumnId = e.dataTransfer.getData('text/plain');
-    if (sourceColumnId === targetColumnId) return;
+    if (!sourceColumnId || sourceColumnId === targetColumnId) return;
 
     const sourceIndex = columnOrder.indexOf(sourceColumnId);
     const targetIndex = columnOrder.indexOf(targetColumnId);
+    if (sourceIndex === -1 || targetIndex === -1) return;
 
     const newOrder = [...columnOrder];
     newOrder.splice(sourceIndex, 1);
     newOrder.splice(targetIndex, 0, sourceColumnId);
 
     setColumnOrder(newOrder);
+    try {
+      const key = getColStorageKey();
+      localStorage.setItem(`${key}_order`, JSON.stringify(newOrder));
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   // ── Export helpers ────────────────────────────────────────────
@@ -303,19 +426,49 @@ const DataTable = ({
     doc.save('export.pdf');
   };
 
-  // 1. Search / Filter logic (Word-based multi-token substring search)
+  // Helper to extract plain text from React nodes / JSX objects
+  const extractTextFromReactNode = (node) => {
+    if (node === null || node === undefined || typeof node === 'boolean') return '';
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) {
+      return node.map(extractTextFromReactNode).join(' ');
+    }
+    if (typeof node === 'object') {
+      if (node.props) {
+        let nodeText = '';
+        if (node.props.label) nodeText += ' ' + extractTextFromReactNode(node.props.label);
+        if (node.props.title) nodeText += ' ' + extractTextFromReactNode(node.props.title);
+        if (node.props.children) nodeText += ' ' + extractTextFromReactNode(node.props.children);
+        return nodeText;
+      }
+    }
+    return '';
+  };
+
+  // 1. Search / Filter logic (Word-based multi-token substring search anywhere in title & all fields)
   const extractSearchableText = (row) => {
     let text = '';
-    const collectStrings = (obj) => {
-      if (obj === null || obj === undefined) return;
+    const visited = new Set();
+
+    const collectStrings = (obj, depth = 0) => {
+      if (obj === null || obj === undefined || depth > 5) return;
       if (typeof obj === 'string' || typeof obj === 'number') {
         text += ' ' + obj;
         return;
       }
       if (typeof obj === 'object') {
-        for (const key of Object.keys(obj)) {
-          if (key === 'id' || key === 'imagePath' || key === 'createdAt' || key === 'updatedAt') continue;
-          collectStrings(obj[key]);
+        if (visited.has(obj)) return;
+        visited.add(obj);
+
+        if (Array.isArray(obj)) {
+          for (const item of obj) {
+            collectStrings(item, depth + 1);
+          }
+        } else {
+          for (const key of Object.keys(obj)) {
+            if (key === 'imagePath' || key === 'password') continue;
+            collectStrings(obj[key], depth + 1);
+          }
         }
       }
     };
@@ -327,8 +480,9 @@ const DataTable = ({
         if (col.render) {
           try {
             const rendered = col.render(row);
-            if (typeof rendered === 'string' || typeof rendered === 'number') {
-              text += ' ' + rendered;
+            const renderedText = extractTextFromReactNode(rendered);
+            if (renderedText) {
+              text += ' ' + renderedText;
             }
           } catch (e) {}
         }
@@ -343,7 +497,7 @@ const DataTable = ({
     if (words.length === 0) return true;
 
     const searchableText = extractSearchableText(row);
-    // Every word must be present somewhere in searchable text
+    // Every word must be present somewhere in searchable text (flexible substring matching across all columns/fields)
     return words.every(word => searchableText.includes(word));
   });
 
@@ -529,6 +683,13 @@ const DataTable = ({
             {column.label}
           </MenuItem>
         ))}
+        <Divider sx={{ my: 0.5 }} />
+        <MenuItem
+          onClick={handleResetColumns}
+          sx={{ py: 0.5, borderRadius: 1.5, fontSize: '0.8rem', color: '#2563eb', fontWeight: 600, justifyContent: 'center' }}
+        >
+          Reset to Default
+        </MenuItem>
       </Menu>
 
       {/* Table Container */}

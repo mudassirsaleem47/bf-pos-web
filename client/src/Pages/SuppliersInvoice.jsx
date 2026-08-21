@@ -47,12 +47,16 @@ const SuppliersInvoice = () => {
     warehouseId: '',
     date: '',
     paidAmount: '',
+    shippingCost: '',
+    weight: '',
     imageFile: null,
     imageName: '',
   });
   const [items, setItems] = useState([emptyItem()]);
 
-  const grandTotal = items.reduce((sum, it) => sum + (parseFloat(it.total) || 0), 0);
+  const itemsTotal = items.reduce((sum, it) => sum + (parseFloat(it.total) || 0), 0);
+  const shippingCost = parseFloat(formData.shippingCost) || 0;
+  const grandTotal = itemsTotal + shippingCost;
   const due = grandTotal - (parseFloat(formData.paidAmount) || 0);
 
   const getToken = () => {
@@ -131,8 +135,8 @@ const SuppliersInvoice = () => {
     setError('');
     setSuccessMsg('');
 
-    if (!formData.supplierId || !formData.warehouseId || !formData.date) {
-      setError('Supplier, Warehouse, and Date are required');
+    if (!formData.supplierId || !formData.date) {
+      setError('Supplier and Date are required');
       return;
     }
     if (items.length === 0 || items.some(it => !it.itemName)) {
@@ -148,8 +152,12 @@ const SuppliersInvoice = () => {
 
     const fd = new FormData();
     fd.append('supplierId', formData.supplierId);
-    fd.append('warehouseId', formData.warehouseId);
+    if (formData.warehouseId) {
+      fd.append('warehouseId', formData.warehouseId);
+    }
     fd.append('date', formData.date);
+    fd.append('shippingCost', parseFloat(formData.shippingCost) || 0);
+    fd.append('weight', parseFloat(formData.weight) || 0);
     fd.append('paidAmount', parseFloat(formData.paidAmount) || 0);
     fd.append('items', JSON.stringify(items));
     if (formData.imageFile) fd.append('image', formData.imageFile);
@@ -182,7 +190,16 @@ const SuppliersInvoice = () => {
   };
 
   const resetForm = () => {
-    setFormData({ supplierId: '', warehouseId: '', date: '', paidAmount: '', imageFile: null, imageName: '' });
+    setFormData({
+      supplierId: '',
+      warehouseId: '',
+      date: '',
+      paidAmount: '',
+      shippingCost: '',
+      weight: '',
+      imageFile: null,
+      imageName: ''
+    });
     setItems([emptyItem()]);
     setEditId(null);
     setError('');
@@ -236,7 +253,7 @@ const SuppliersInvoice = () => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
     doc.text(invoice.supplier?.name || '-', 14, infoY + 6);
-    doc.text(invoice.warehouse?.name || '-', col2, infoY + 6);
+    doc.text(invoice.warehouse?.name || 'None', col2, infoY + 6);
 
     // Divider
     doc.setDrawColor(226, 232, 240);
@@ -281,18 +298,34 @@ const SuppliersInvoice = () => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
       doc.text(label, totalsX + 3, y + 6);
-      doc.text(`Rs. ${value}`, totalsX + totalsW - 3, y + 6, { align: 'right' });
+      doc.text(`${value}`, totalsX + totalsW - 3, y + 6, { align: 'right' });
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.3);
       doc.rect(totalsX, y, totalsW, 9);
     };
 
-    drawTotalRow('Grand Total', invoice.grandTotal.toFixed(2), totalsY, [248, 250, 252], [15, 23, 42]);
-    drawTotalRow('Paid Amount', invoice.paidAmount.toFixed(2), totalsY + 10, [240, 253, 244], [21, 128, 61]);
+    let currentY = totalsY;
+    const itemsSubtotal = invoice.items.reduce((s, it) => s + (it.total || 0), 0);
+    drawTotalRow('Items Total', `Rs. ${itemsSubtotal.toFixed(2)}`, currentY, [255, 255, 255], [15, 23, 42]);
+    currentY += 9;
+
+    if (invoice.shippingCost && invoice.shippingCost > 0) {
+      drawTotalRow('Shipping Cost', `Rs. ${invoice.shippingCost.toFixed(2)}`, currentY, [240, 249, 255], [2, 132, 199]);
+      currentY += 9;
+    }
+    if (invoice.weight && invoice.weight > 0) {
+      drawTotalRow('Weight', `${invoice.weight} kg`, currentY, [255, 255, 255], [100, 116, 139]);
+      currentY += 9;
+    }
+
+    drawTotalRow('Grand Total', `Rs. ${invoice.grandTotal.toFixed(2)}`, currentY, [248, 250, 252], [15, 23, 42]);
+    currentY += 9;
+    drawTotalRow('Paid Amount', `Rs. ${invoice.paidAmount.toFixed(2)}`, currentY, [240, 253, 244], [21, 128, 61]);
+    currentY += 9;
     drawTotalRow(
       'Due',
-      invoice.due.toFixed(2),
-      totalsY + 20,
+      `Rs. ${invoice.due.toFixed(2)}`,
+      currentY,
       invoice.due > 0 ? [254, 242, 242] : [240, 253, 244],
       invoice.due > 0 ? [185, 28, 28] : [21, 128, 61]
     );
@@ -318,10 +351,12 @@ const SuppliersInvoice = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setFormData({
-        supplierId: data.supplierId,
-        warehouseId: data.warehouseId,
+        supplierId: data.supplierId || '',
+        warehouseId: data.warehouseId || '',
         date: data.date ? data.date.slice(0, 10) : '',
-        paidAmount: String(data.paidAmount),
+        paidAmount: String(data.paidAmount ?? ''),
+        shippingCost: String(data.shippingCost ?? ''),
+        weight: String(data.weight ?? ''),
         imageFile: null,
         imageName: data.imagePath ? data.imagePath.split('/').pop() : '',
       });
@@ -379,6 +414,14 @@ const SuppliersInvoice = () => {
     {
       id: 'date', label: 'Date', sortable: true,
       render: (row) => new Date(row.date).toLocaleDateString()
+    },
+    {
+      id: 'shippingCost', label: 'Shipping', sortable: true,
+      render: (row) => (row.shippingCost && row.shippingCost > 0) ? `Rs. ${parseFloat(row.shippingCost).toFixed(2)}` : '-'
+    },
+    {
+      id: 'weight', label: 'Weight', sortable: true,
+      render: (row) => (row.weight && row.weight > 0) ? `${row.weight} kg` : '-'
     },
     {
       id: 'grandTotal', label: 'Grand Total', sortable: true,
@@ -454,12 +497,13 @@ const SuppliersInvoice = () => {
               </Select>
             </FormControl>
 
-            <FormControl variant="standard" fullWidth required>
-              <InputLabel>Select Warehouse</InputLabel>
+            <FormControl variant="standard" fullWidth>
+              <InputLabel>Select Warehouse (Optional)</InputLabel>
               <Select
                 value={formData.warehouseId}
                 onChange={(e) => setFormData(f => ({ ...f, warehouseId: e.target.value }))}
               >
+                <MenuItem value=""><em>None / Direct (No Warehouse)</em></MenuItem>
                 {warehouses.map(w => <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>)}
               </Select>
             </FormControl>
@@ -481,6 +525,33 @@ const SuppliersInvoice = () => {
                 }}
               />
             </LocalizationProvider>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <TextField
+                variant="standard"
+                label="Shipping Charges (Rs.)"
+                type="number"
+                value={formData.shippingCost}
+                onChange={(e) => setFormData(f => ({ ...f, shippingCost: e.target.value }))}
+                placeholder="0.00"
+                slotProps={{
+                  htmlInput: { min: 0, step: 'any' }
+                }}
+                fullWidth
+              />
+              <TextField
+                variant="standard"
+                label="Weight (kg / lbs)"
+                type="number"
+                value={formData.weight}
+                onChange={(e) => setFormData(f => ({ ...f, weight: e.target.value }))}
+                placeholder="0.00"
+                slotProps={{
+                  htmlInput: { min: 0, step: 'any' }
+                }}
+                fullWidth
+              />
+            </Box>
           </Stack>
 
           {/* Right col — Image */}
@@ -659,10 +730,12 @@ const SuppliersInvoice = () => {
           {/* Right: Totals */}
           <Box sx={{ border: '1px solid #e2e8f0', borderRadius: 1.5, overflow: 'hidden' }}>
             {[
+              { label: 'Items Total:', value: itemsTotal.toFixed(2), bold: false },
+              ...(shippingCost > 0 ? [{ label: 'Shipping Charges:', value: shippingCost.toFixed(2), bold: false, color: '#0284c7' }] : []),
               { label: 'Grand Total:', value: grandTotal.toFixed(2), bold: true },
             ].map(r => (
-              <Box key={r.label} sx={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9' }}>
-                <Typography sx={{ flex: 1, px: 2, py: 1.5, fontSize: '0.85rem', fontWeight: 600, color: '#475569', borderRight: '1px solid #f1f5f9' }}>
+              <Box key={r.label} sx={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', bgcolor: r.bold ? '#f8fafc' : 'transparent' }}>
+                <Typography sx={{ flex: 1, px: 2, py: 1.5, fontSize: '0.85rem', fontWeight: r.bold ? 700 : 600, color: r.color || '#475569', borderRight: '1px solid #f1f5f9' }}>
                   {r.label}
                 </Typography>
                 <Box sx={{ flex: 2, px: 2 }}>
@@ -671,7 +744,7 @@ const SuppliersInvoice = () => {
                     value={r.value}
                     disabled
                     fullWidth
-                    slotProps={{ input: { disableUnderline: true, sx: { fontSize: '0.85rem', fontWeight: 700 } } }}
+                    slotProps={{ input: { disableUnderline: true, sx: { fontSize: '0.85rem', fontWeight: 700, color: r.color || '#0f172a' } } }}
                   />
                 </Box>
               </Box>
@@ -752,6 +825,7 @@ const SuppliersInvoice = () => {
             onSelectedChange={setSelected}
             bulkActions={bulkActions}
             searchPlaceholder="Search invoices..."
+            storageKey="supplier_invoices"
           />
         </Card>
       ) : renderForm()}
@@ -777,9 +851,11 @@ const SuppliersInvoice = () => {
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
                 {[
                   { label: 'Supplier', value: viewInvoice.supplier?.name || '-' },
-                  { label: 'Warehouse', value: viewInvoice.warehouse?.name || '-' },
+                  { label: 'Warehouse', value: viewInvoice.warehouse?.name || 'None' },
                   { label: 'Date', value: new Date(viewInvoice.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) },
                   { label: 'Created', value: new Date(viewInvoice.createdAt).toLocaleDateString() },
+                  ...(viewInvoice.weight && viewInvoice.weight > 0 ? [{ label: 'Weight', value: `${viewInvoice.weight} kg` }] : []),
+                  ...(viewInvoice.shippingCost && viewInvoice.shippingCost > 0 ? [{ label: 'Shipping Cost', value: `Rs. ${viewInvoice.shippingCost.toFixed(2)}` }] : []),
                 ].map(({ label, value }) => (
                   <Box key={label} sx={{ bgcolor: '#f8fafc', borderRadius: 1.5, p: 1.5, border: '1px solid #e2e8f0' }}>
                     <Typography variant="caption" sx={{ color: '#94a3b8', fontWeight: 600, display: 'block' }}>{label}</Typography>
@@ -816,16 +892,21 @@ const SuppliersInvoice = () => {
               {/* Totals */}
               <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <Box sx={{ minWidth: 280, border: '1px solid #e2e8f0', borderRadius: 1.5, overflow: 'hidden' }}>
-                  {[
-                    { label: 'Grand Total', value: `Rs. ${viewInvoice.grandTotal.toFixed(2)}`, color: '#0f172a', bg: '#f8fafc' },
-                    { label: 'Paid Amount', value: `Rs. ${viewInvoice.paidAmount.toFixed(2)}`, color: '#15803d', bg: '#f0fdf4' },
-                    { label: 'Due', value: `Rs. ${viewInvoice.due.toFixed(2)}`, color: viewInvoice.due > 0 ? '#b91c1c' : '#15803d', bg: viewInvoice.due > 0 ? '#fef2f2' : '#f0fdf4' },
-                  ].map(({ label, value, color, bg }) => (
-                    <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', px: 2, py: 1.25, bgcolor: bg, borderBottom: '1px solid #e2e8f0' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#475569' }}>{label}</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700, color }}>{value}</Typography>
-                    </Box>
-                  ))}
+                  {(() => {
+                    const itemsSub = viewInvoice.items.reduce((s, it) => s + (it.total || 0), 0);
+                    return [
+                      { label: 'Items Subtotal', value: `Rs. ${itemsSub.toFixed(2)}`, color: '#475569', bg: '#ffffff' },
+                      ...(viewInvoice.shippingCost && viewInvoice.shippingCost > 0 ? [{ label: 'Shipping Charges', value: `Rs. ${viewInvoice.shippingCost.toFixed(2)}`, color: '#0284c7', bg: '#f0f9ff' }] : []),
+                      { label: 'Grand Total', value: `Rs. ${viewInvoice.grandTotal.toFixed(2)}`, color: '#0f172a', bg: '#f8fafc' },
+                      { label: 'Paid Amount', value: `Rs. ${viewInvoice.paidAmount.toFixed(2)}`, color: '#15803d', bg: '#f0fdf4' },
+                      { label: 'Due', value: `Rs. ${viewInvoice.due.toFixed(2)}`, color: viewInvoice.due > 0 ? '#b91c1c' : '#15803d', bg: viewInvoice.due > 0 ? '#fef2f2' : '#f0fdf4' },
+                    ].map(({ label, value, color, bg }) => (
+                      <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', px: 2, py: 1.25, bgcolor: bg, borderBottom: '1px solid #e2e8f0' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#475569' }}>{label}</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color }}>{value}</Typography>
+                      </Box>
+                    ));
+                  })()}
                 </Box>
               </Box>
 

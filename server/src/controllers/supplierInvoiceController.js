@@ -55,29 +55,41 @@ const getInvoice = async (req, res) => {
 // @route POST /api/supplier-invoices
 const createInvoice = async (req, res) => {
   try {
-    const { supplierId, warehouseId, date, paidAmount, items } = req.body;
+    const { supplierId, warehouseId, date, paidAmount, shippingCost, weight, items } = req.body;
 
-    if (!supplierId || !warehouseId || !date) {
-      return res.status(400).json({ message: 'Supplier, Warehouse, and Date are required' });
+    if (!supplierId || !date) {
+      return res.status(400).json({ message: 'Supplier and Date are required' });
     }
 
-    // Verify supplier and warehouse belong to user
+    // Verify supplier belongs to user
     const supplier = await prisma.supplier.findFirst({
       where: { id: supplierId, userId: req.user.id }
     });
-    const warehouse = await prisma.warehouse.findFirst({
-      where: { id: warehouseId, userId: req.user.id }
-    });
-    if (!supplier || !warehouse) {
-      return res.status(400).json({ message: 'Supplier or Warehouse not found or unauthorized' });
+    if (!supplier) {
+      return res.status(400).json({ message: 'Supplier not found or unauthorized' });
     }
 
-    const parsedItems = items ? JSON.parse(items) : [];
+    // Verify warehouse if provided
+    let validWarehouseId = null;
+    if (warehouseId && warehouseId.trim() !== '') {
+      const warehouse = await prisma.warehouse.findFirst({
+        where: { id: warehouseId, userId: req.user.id }
+      });
+      if (!warehouse) {
+        return res.status(400).json({ message: 'Warehouse not found or unauthorized' });
+      }
+      validWarehouseId = warehouse.id;
+    }
+
+    const parsedItems = items ? (typeof items === 'string' ? JSON.parse(items) : items) : [];
     if (parsedItems.length === 0) {
       return res.status(400).json({ message: 'At least one item is required' });
     }
 
-    const grandTotal = parsedItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+    const itemsSubtotal = parsedItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+    const shipping = parseFloat(shippingCost) || 0;
+    const itemWeight = parseFloat(weight) || 0;
+    const grandTotal = itemsSubtotal + shipping;
     const paid = parseFloat(paidAmount) || 0;
     const due = grandTotal - paid;
     const invoiceNo = await generateInvoiceNo(req.user.id);
@@ -87,9 +99,11 @@ const createInvoice = async (req, res) => {
       data: {
         invoiceNo,
         supplierId,
-        warehouseId,
+        warehouseId: validWarehouseId,
         date: new Date(date),
         imagePath,
+        shippingCost: shipping,
+        weight: itemWeight,
         grandTotal,
         paidAmount: paid,
         due,
@@ -118,7 +132,7 @@ const createInvoice = async (req, res) => {
 const updateInvoice = async (req, res) => {
   try {
     const { id } = req.params;
-    const { supplierId, warehouseId, date, paidAmount, items } = req.body;
+    const { supplierId, warehouseId, date, paidAmount, shippingCost, weight, items } = req.body;
 
     const existing = await prisma.supplierInvoice.findFirst({
       where: { id, userId: req.user.id }
@@ -132,15 +146,20 @@ const updateInvoice = async (req, res) => {
       });
       if (!supplier) return res.status(400).json({ message: 'Supplier not found or unauthorized' });
     }
-    if (warehouseId) {
+    let validWarehouseId = null;
+    if (warehouseId && warehouseId.trim() !== '') {
       const warehouse = await prisma.warehouse.findFirst({
         where: { id: warehouseId, userId: req.user.id }
       });
       if (!warehouse) return res.status(400).json({ message: 'Warehouse not found or unauthorized' });
+      validWarehouseId = warehouse.id;
     }
 
-    const parsedItems = items ? JSON.parse(items) : [];
-    const grandTotal = parsedItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+    const parsedItems = items ? (typeof items === 'string' ? JSON.parse(items) : items) : [];
+    const itemsSubtotal = parsedItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+    const shipping = shippingCost !== undefined ? (parseFloat(shippingCost) || 0) : (existing.shippingCost || 0);
+    const itemWeight = weight !== undefined ? (parseFloat(weight) || 0) : (existing.weight || 0);
+    const grandTotal = itemsSubtotal + shipping;
     const paid = parseFloat(paidAmount) || 0;
     const due = grandTotal - paid;
 
@@ -166,9 +185,11 @@ const updateInvoice = async (req, res) => {
       where: { id },
       data: {
         supplierId,
-        warehouseId,
-        date: new Date(date),
+        warehouseId: validWarehouseId,
+        date: date ? new Date(date) : existing.date,
         imagePath,
+        shippingCost: shipping,
+        weight: itemWeight,
         grandTotal,
         paidAmount: paid,
         due,

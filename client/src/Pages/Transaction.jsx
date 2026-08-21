@@ -185,6 +185,9 @@ const Transaction = () => {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.text(`Receipt: ${sale.receiptNo}`, 14, 20);
+    if (sale.orderNo) {
+      doc.text(`Order #: ${sale.orderNo}`, 14, 24);
+    }
 
     const dateStr = dayjs(sale.createdAt).format('DD/MM/YYYY hh:mm A');
     doc.text(`Date: ${dateStr}`, pageW - 14, 20, { align: 'right' });
@@ -198,7 +201,7 @@ const Transaction = () => {
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     doc.text('STORE ADDRESS', 14, infoY);
-    doc.text('CONTACT DETAILS', col2, infoY);
+    doc.text('CONTACT & ORDER DETAILS', col2, infoY);
 
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'normal');
@@ -208,15 +211,17 @@ const Transaction = () => {
     let contactText = '';
     if (storeSettings.phone) contactText += `Phone: ${storeSettings.phone}\n`;
     if (storeSettings.email) contactText += `Email: ${storeSettings.email}\n`;
+    if (sale.orderNo) contactText += `Order #: ${sale.orderNo}\n`;
+    if (sale.notes) contactText += `Notes: ${sale.notes}\n`;
     if (storeSettings.website) contactText += `Web: ${storeSettings.website}`;
     doc.text(contactText || 'N/A', col2, infoY + 6);
 
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.4);
-    doc.line(14, infoY + 22, pageW - 14, infoY + 22);
+    doc.line(14, infoY + 24, pageW - 14, infoY + 24);
 
     // Items table
-    const tableStartY = infoY + 28;
+    const tableStartY = infoY + 30;
     autoTable(doc, {
       startY: tableStartY,
       head: [['#', 'Item / Product', 'Barcode', 'Quantity', `Price (${storeSettings.currency})`, `Total (${storeSettings.currency})`]],
@@ -311,6 +316,18 @@ const Transaction = () => {
 
   const columns = [
     { id: 'receiptNo', label: 'Receipt #', sortable: true, cellSx: { fontWeight: 700, color: '#2563eb' } },
+    {
+      id: 'orderNo',
+      label: 'Order #',
+      sortable: true,
+      render: (row) => row.orderNo || '-'
+    },
+    {
+      id: 'customer',
+      label: 'Customer',
+      sortable: false,
+      render: (row) => row.customer?.name || 'Walk-in'
+    },
     {
       id: 'createdAt',
       label: 'Date & Time',
@@ -482,7 +499,8 @@ const Transaction = () => {
           selected={selected}
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
-          searchPlaceholder="Search by receipt number..."
+          searchPlaceholder="Search by receipt number, order #, customer..."
+          storageKey="transactions"
         />
       </Card>
 
@@ -530,6 +548,26 @@ const Transaction = () => {
                       {dayjs(activeSale.createdAt).format('DD/MM/YYYY hh:mm A')}
                     </Typography>
                   </Grid>
+                  {activeSale.customer && (
+                    <Grid item xs={6}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 600 }}>Customer:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {activeSale.customer.name} {activeSale.customer.phone ? `(${activeSale.customer.phone})` : ''}
+                      </Typography>
+                    </Grid>
+                  )}
+                  {activeSale.orderNo && (
+                    <Grid item xs={6} sx={{ textAlign: activeSale.customer ? 'right' : 'left' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 600 }}>Order #:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: '#2563eb' }}>{activeSale.orderNo}</Typography>
+                    </Grid>
+                  )}
+                  {activeSale.notes && (
+                    <Grid item xs={12}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 600 }}>Notes / Remarks:</Typography>
+                      <Typography variant="body2" sx={{ fontStyle: 'italic', color: '#475569' }}>{activeSale.notes}</Typography>
+                    </Grid>
+                  )}
                 </Grid>
               </Box>
 

@@ -18,7 +18,8 @@ import {
   Divider,
   Avatar,
   Menu,
-  MenuItem
+  MenuItem,
+  Button
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -29,7 +30,8 @@ import {
   Error as ErrorIcon,
   ReceiptLong as LoanIcon,
   Settings as SettingsIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  DoneAll as DoneAllIcon
 } from '@mui/icons-material';
 
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost') ? import.meta.env.VITE_API_URL : window.location.origin);
@@ -39,6 +41,13 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [readIds, setReadIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('read_notifications') || '[]');
+    } catch {
+      return [];
+    }
+  });
   const [anchorEl, setAnchorEl] = useState(null);
   const [profileAnchorEl, setProfileAnchorEl] = useState(null);
   const [user, setUser] = useState(null);
@@ -106,6 +115,36 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/login');
+  };
+
+  const unreadCount = notifications.filter(n => !readIds.includes(n.id)).length;
+
+  const handleMarkAllAsRead = () => {
+    const allIds = notifications.map(n => n.id);
+    const existingRead = (() => {
+      try { return JSON.parse(localStorage.getItem('read_notifications') || '[]'); } catch { return []; }
+    })();
+    const merged = Array.from(new Set([...existingRead, ...allIds]));
+    localStorage.setItem('read_notifications', JSON.stringify(merged));
+    setReadIds(merged);
+  };
+
+  const handleNotificationItemClick = (n) => {
+    const existingRead = (() => {
+      try { return JSON.parse(localStorage.getItem('read_notifications') || '[]'); } catch { return []; }
+    })();
+    if (!existingRead.includes(n.id)) {
+      const updated = [...existingRead, n.id];
+      localStorage.setItem('read_notifications', JSON.stringify(updated));
+      setReadIds(updated);
+    }
+    handleCloseNotifications();
+    const prodId = n.productId || (n.id ? n.id.replace('low-stock-', '').replace('expiry-', '') : null);
+    if ((n.type === 'low-stock' || n.type === 'expiry') && prodId) {
+      navigate(`/products/edit/${prodId}`);
+    } else if (n.type === 'loan') {
+      navigate('/receivables-payables');
+    }
   };
 
   const open = Boolean(anchorEl);
@@ -195,7 +234,7 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
         </Box>
 
         {/* Right Actions: Buttons */}
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
           {/* Notification Button */}
           <IconButton
             onClick={handleOpenNotifications}
@@ -205,7 +244,7 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
               '&:hover': { backgroundColor: '#f1f5f9', color: '#0f172a' }
             }}
           >
-            <Badge badgeContent={notifications.length} color="error" overlap="circular">
+            <Badge badgeContent={unreadCount} color="error" overlap="circular">
               <NotificationsIcon sx={{ fontSize: 20 }} />
             </Badge>
           </IconButton>
@@ -226,8 +265,8 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
             slotProps={{
               paper: {
                 sx: {
-                  width: 340,
-                  maxHeight: 420,
+                  width: 360,
+                  maxHeight: 440,
                   borderRadius: 2,
                   boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
                   border: '1px solid #e2e8f0',
@@ -237,46 +276,68 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
             }}
           >
             <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a' }}>
-                Notifications ({notifications.length})
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                Click to open/edit
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a' }}>
+                  Notifications
+                </Typography>
+                {unreadCount > 0 && (
+                  <Badge badgeContent={unreadCount} color="error" sx={{ ml: 1 }} />
+                )}
+              </Box>
+              {unreadCount > 0 ? (
+                <Button
+                  size="small"
+                  startIcon={<DoneAllIcon sx={{ fontSize: 16 }} />}
+                  onClick={handleMarkAllAsRead}
+                  sx={{
+                    fontSize: '0.725rem',
+                    textTransform: 'none',
+                    py: 0.25,
+                    px: 1,
+                    minWidth: 'auto',
+                    borderRadius: 1.5,
+                    color: '#2563eb',
+                    fontWeight: 600,
+                    '&:hover': { bgcolor: '#eff6ff' }
+                  }}
+                >
+                  Mark all as read
+                </Button>
+              ) : (
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                  All caught up
+                </Typography>
+              )}
             </Box>
-            <List sx={{ p: 0, maxHeight: 350, overflowY: 'auto' }}>
+            <List sx={{ p: 0, maxHeight: 360, overflowY: 'auto' }}>
               {notifications.length === 0 ? (
                 <Box sx={{ py: 4, px: 2, textAlign: 'center' }}>
                   <Typography variant="body2" color="text.secondary">
-                    No new alerts or notifications.
+                    No alerts or notifications.
                   </Typography>
                 </Box>
               ) : (
                 notifications.map((n, idx) => {
                   const prodId = n.productId || (n.id ? n.id.replace('low-stock-', '').replace('expiry-', '') : null);
                   const isProductAlert = n.type === 'low-stock' || n.type === 'expiry';
+                  const isRead = readIds.includes(n.id);
 
                   return (
                     <React.Fragment key={n.id}>
                       {idx > 0 && <Divider />}
                       <ListItem
                         button
-                        onClick={() => {
-                          handleCloseNotifications();
-                          if (isProductAlert && prodId) {
-                            navigate(`/products/edit/${prodId}`);
-                          } else if (n.type === 'loan') {
-                            navigate('/receivables-payables');
-                          }
-                        }}
+                        onClick={() => handleNotificationItemClick(n)}
                         sx={{
                           alignItems: 'flex-start',
                           py: 1.5,
                           px: 2,
                           cursor: 'pointer',
+                          opacity: isRead ? 0.6 : 1,
+                          bgcolor: isRead ? 'transparent' : '#f0f9ff',
                           transition: 'all 0.15s ease',
                           '&:hover': {
-                            bgcolor: '#f8fafc',
+                            bgcolor: isRead ? '#f8fafc' : '#e0f2fe',
                             '& .MuiTypography-root': { color: '#2563eb' }
                           }
                         }}
@@ -289,7 +350,7 @@ const DashboardHeader = ({ onMenuClick, onCollapseToggle, isCollapsed }) => {
                         <ListItemText
                           primary={
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="body2" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '0.825rem' }}>
+                              <Typography variant="body2" sx={{ fontWeight: isRead ? 600 : 700, color: '#0f172a', fontSize: '0.825rem' }}>
                                 {n.title}
                               </Typography>
                               {isProductAlert && (

@@ -80,6 +80,8 @@ const POS = () => {
   const [quantity, setQuantity] = useState(1);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [shippingAmount, setShippingAmount] = useState('');
+  const [orderNo, setOrderNo] = useState('');
+  const [notes, setNotes] = useState('');
   const [cash, setCash] = useState('');
   const [settings, setSettings] = useState({
     storeName: 'My Store',
@@ -636,6 +638,9 @@ const POS = () => {
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.text(`Invoice / Receipt: ${saleToPrint.receiptNo || 'Draft'}`, textStartX, 20);
+      if (saleToPrint.orderNo) {
+        doc.text(`Order #: ${saleToPrint.orderNo}`, textStartX, 24);
+      }
 
       const dateStr = dayjs(saleToPrint.createdAt || new Date()).format('DD/MM/YYYY hh:mm A');
       doc.text(`Date: ${dateStr}`, pageW - 14, 20, { align: 'right' });
@@ -649,7 +654,7 @@ const POS = () => {
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
       doc.text('STORE ADDRESS', 14, infoY);
-      doc.text('CUSTOMER DETAILS', col2, infoY);
+      doc.text('CUSTOMER & ORDER DETAILS', col2, infoY);
 
       doc.setTextColor(15, 23, 42);
       doc.setFont('helvetica', 'normal');
@@ -661,14 +666,16 @@ const POS = () => {
       const custPhone = saleToPrint.customer?.phone || selectedCustomer?.phone || '';
       let customerText = `Name: ${custName}`;
       if (custPhone) customerText += `\nPhone: ${custPhone}`;
+      if (saleToPrint.orderNo) customerText += `\nOrder #: ${saleToPrint.orderNo}`;
+      if (saleToPrint.notes) customerText += `\nNotes: ${saleToPrint.notes}`;
       doc.text(customerText, col2, infoY + 6);
 
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.4);
-      doc.line(14, infoY + 22, pageW - 14, infoY + 22);
+      doc.line(14, infoY + 24, pageW - 14, infoY + 24);
 
       // Items table
-      const tableStartY = infoY + 28;
+      const tableStartY = infoY + 30;
       
       const itemsList = saleToPrint.items || cart.map((item) => ({
         name: item.name,
@@ -846,6 +853,24 @@ const POS = () => {
 
   const addToCart = (product, qty = 1) => {
     const parsedQty = parseFloat(qty) || 1;
+    const prodStock = parseFloat(product.stock) || 0;
+
+    if (prodStock <= 0) {
+      setError(`Cannot add "${product.name}" to cart: Product is out of stock (Stock: 0).`);
+      setTimeout(() => setError(''), 4000);
+      return;
+    }
+
+    const existingItem = cart.find((item) => item.id === product.id);
+    const existingQty = existingItem ? (parseFloat(existingItem.qty) || 0) : 0;
+    const totalRequestedQty = existingQty + parsedQty;
+
+    if (totalRequestedQty > prodStock) {
+      setError(`Cannot add ${parsedQty} more "${product.name}". Available stock is only ${prodStock} (Already in cart: ${existingQty}).`);
+      setTimeout(() => setError(''), 4000);
+      return;
+    }
+
     setCart((prevCart) => {
       const existingIndex = prevCart.findIndex((item) => item.id === product.id);
       if (existingIndex > -1) {
@@ -856,6 +881,7 @@ const POS = () => {
         newCart[existingIndex] = {
           ...newCart[existingIndex],
           qty: newQty,
+          stock: prodStock,
           total: Math.max(0, (newQty * currentPrice) - itemDisc),
         };
         return newCart;
@@ -870,6 +896,7 @@ const POS = () => {
             price: initialPrice,
             supplierPrice: parseFloat(product.supplierPrice) || 0,
             qty: parsedQty,
+            stock: prodStock,
             discount: 0,
             total: parsedQty * initialPrice,
           },
@@ -893,11 +920,20 @@ const POS = () => {
   };
 
   const handleQtyChange = (id, newQty) => {
+    const prod = products.find(p => p.id === id);
+    const prodStock = prod ? (parseFloat(prod.stock) || 0) : Infinity;
+
+    const parsed = newQty === '' ? '' : parseFloat(newQty);
+    if (parsed !== '' && !isNaN(parsed) && parsed > prodStock) {
+      setError(`Available stock for "${prod?.name || 'this product'}" is only ${prodStock}.`);
+      setTimeout(() => setError(''), 4000);
+      return;
+    }
+
     setCart((prevCart) =>
       prevCart.map((item) => {
         if (item.id === id) {
-          const parsed = newQty === '' ? '' : parseFloat(newQty);
-          const numQty = (parsed === '' || isNaN(parsed) || parsed <= 0) ? 1 : parsed;
+          const numQty = (parsed === '' || isNaN(parsed) || parsed <= 0) ? 1 : Math.min(parsed, item.stock || prodStock);
           const numPrice = parseFloat(item.price) || 0;
           const numDisc = parseFloat(item.discount) || 0;
           return {
@@ -960,6 +996,8 @@ const POS = () => {
     setQuantity(1);
     setDiscountAmount(0);
     setShippingAmount('');
+    setOrderNo('');
+    setNotes('');
     setCash('');
     setLastSale(null);
     setSelectedCustomer(null);
@@ -992,6 +1030,21 @@ const POS = () => {
       return;
     }
 
+    // Stock validation check before sending checkout
+    for (const item of cart) {
+      const prod = products.find(p => p.id === item.id);
+      const availableStock = prod ? (parseFloat(prod.stock) || 0) : (parseFloat(item.stock) || 0);
+      const itemQty = parseFloat(item.qty) || 0;
+      if (availableStock <= 0) {
+        setError(`Product "${item.name}" is out of stock (Stock: 0). Remove it to proceed.`);
+        return;
+      }
+      if (itemQty > availableStock) {
+        setError(`Insufficient stock for "${item.name}". Available: ${availableStock}, In cart: ${itemQty}.`);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const token = getToken();
@@ -1013,6 +1066,8 @@ const POS = () => {
             discount: item.discount || 0,
             total: item.total,
           })),
+          orderNo: orderNo.trim() || null,
+          notes: notes.trim() || null,
           totalAmount: total,
           paidAmount: paid,
           discount: totalItemDiscount + finalDiscount,
@@ -1039,7 +1094,10 @@ const POS = () => {
       setCash('');
       setDiscountAmount(0);
       setShippingAmount('');
+      setOrderNo('');
+      setNotes('');
       setSelectedCustomer(null);
+      fetchProducts(); // Refresh products stock
     } catch (err) {
       setError(err.message || 'Failed to process checkout');
     } finally {
@@ -1070,9 +1128,19 @@ const POS = () => {
         <div className="thermal-receipt-flex">
           <span>Receipt No: {lastSale?.receiptNo || 'R-XXXX'}</span>
         </div>
+        {lastSale?.orderNo && (
+          <div className="thermal-receipt-flex">
+            <span>Order No: {lastSale.orderNo}</span>
+          </div>
+        )}
         {lastSale?.customer && (
           <div className="thermal-receipt-flex">
             <span>Customer: {lastSale.customer.name}</span>
+          </div>
+        )}
+        {lastSale?.notes && (
+          <div className="thermal-receipt-flex" style={{ fontSize: '11px', fontStyle: 'italic' }}>
+            <span>Note: {lastSale.notes}</span>
           </div>
         )}
         <div className="thermal-receipt-divider" />
@@ -1175,7 +1243,43 @@ const POS = () => {
                 {/* Product Autocomplete */}
                 <Autocomplete
                   options={products}
-                  getOptionLabel={(option) => `${option.name} ${parseFloat(option.price) > 0 ? `(${settings.currency}${parseFloat(option.price).toFixed(2)})` : (parseFloat(option.supplierPrice) > 0 ? `(Cost: ${settings.currency}${parseFloat(option.supplierPrice).toFixed(2)})` : '')}`}
+                  getOptionLabel={(option) => {
+                    const pricePart = parseFloat(option.price) > 0 
+                      ? `(${settings.currency}${parseFloat(option.price).toFixed(2)})` 
+                      : (parseFloat(option.supplierPrice) > 0 ? `(Cost: ${settings.currency}${parseFloat(option.supplierPrice).toFixed(2)})` : '');
+                    const stockPart = (parseFloat(option.stock) || 0) <= 0 
+                      ? '[OUT OF STOCK]' 
+                      : `[Stock: ${option.stock} ${option.unit || 'pcs'}]`;
+                    return `${option.name} ${pricePart} ${stockPart}`;
+                  }}
+                  renderOption={(props, option) => {
+                    const isOutOfStock = (parseFloat(option.stock) || 0) <= 0;
+                    return (
+                      <li {...props} key={option.id} style={{ ...props.style, opacity: isOutOfStock ? 0.65 : 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', py: 0.5 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 600, color: isOutOfStock ? '#dc2626' : '#0f172a' }}>
+                              {option.name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {option.barcode ? `Barcode: ${option.barcode} • ` : ''}
+                              {option.category?.name ? `Brand: ${option.category.name}` : ''}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ textAlign: 'right' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#2563eb' }}>
+                              {parseFloat(option.price) > 0 
+                                ? `${settings.currency}${parseFloat(option.price).toFixed(2)}` 
+                                : (parseFloat(option.supplierPrice) > 0 ? `Cost: ${settings.currency}${parseFloat(option.supplierPrice).toFixed(2)}` : '-')}
+                            </Typography>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: isOutOfStock ? '#dc2626' : '#16a34a', display: 'block' }}>
+                              {isOutOfStock ? 'Out of Stock' : `Stock: ${option.stock} ${option.unit || 'pcs'}`}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </li>
+                    );
+                  }}
                   value={selectedProduct}
                   open={productDropdownOpen}
                   onOpen={(event) => {
@@ -1459,6 +1563,26 @@ const POS = () => {
                   slotProps={{
                     htmlInput: { min: 0 }
                   }}
+                />
+
+                <TextField
+                  label="Order # (Optional)"
+                  size="small"
+                  fullWidth
+                  value={orderNo}
+                  onChange={(e) => setOrderNo(e.target.value)}
+                  placeholder="e.g. ORD-1001"
+                />
+
+                <TextField
+                  label="Notes / Remarks (Optional)"
+                  size="small"
+                  fullWidth
+                  multiline
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Delivery note, instructions, etc."
                 />
 
                 {(totalItemDiscount + finalDiscount) > 0 && (

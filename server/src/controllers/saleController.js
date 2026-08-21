@@ -28,7 +28,7 @@ const getSales = async (req, res) => {
 // @route POST /api/sales
 const createSale = async (req, res) => {
   try {
-    const { items, totalAmount, paidAmount, discount, tax, shipping, customerId } = req.body;
+    const { items, totalAmount, paidAmount, discount, tax, shipping, customerId, orderNo, notes } = req.body;
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Items are required' });
     }
@@ -43,7 +43,7 @@ const createSale = async (req, res) => {
       return res.status(400).json({ message: 'Customer is required for credit transactions.' });
     }
 
-    // Verify products belong to user and adjust stock
+    // Verify products belong to user and check stock availability
     for (const item of items) {
       if (item.productId) {
         const prod = await prisma.product.findFirst({
@@ -51,6 +51,16 @@ const createSale = async (req, res) => {
         });
         if (!prod) {
           return res.status(400).json({ message: `Product not found or unauthorized: ${item.name}` });
+        }
+        const itemQty = parseFloat(item.quantity) || 0;
+        // Only validate positive quantities (sales). Returns have negative quantities.
+        if (itemQty > 0) {
+          if (prod.stock <= 0) {
+            return res.status(400).json({ message: `Product "${prod.name}" is out of stock (Available: 0). Cannot process sale.` });
+          }
+          if (prod.stock < itemQty) {
+            return res.status(400).json({ message: `Insufficient stock for "${prod.name}". Available: ${prod.stock}, Requested: ${itemQty}.` });
+          }
         }
       }
     }
@@ -69,6 +79,8 @@ const createSale = async (req, res) => {
     const sale = await prisma.saleTransaction.create({
       data: {
         receiptNo,
+        orderNo: orderNo ? String(orderNo).trim() : null,
+        notes: notes ? String(notes).trim() : null,
         totalAmount: total,
         paidAmount: paid,
         change,

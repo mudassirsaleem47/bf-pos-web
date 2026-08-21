@@ -130,6 +130,8 @@ model SaleTransaction {
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   receiptNo   String
+  orderNo     String?
+  notes       String?
   totalAmount Float      @default(0)
   paidAmount  Float      @default(0)
   change      Float      @default(0)
@@ -160,22 +162,24 @@ model SaleItem {
 }
 
 model SupplierInvoice {
-  id          String                @id @default(uuid())
-  userId      String
-  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  invoiceNo   String
-  supplierId  String
-  warehouseId String
-  date        DateTime
-  imagePath   String?
-  grandTotal  Float                 @default(0)
-  paidAmount  Float                 @default(0)
-  due         Float                 @default(0)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @default(now()) @updatedAt
-  supplier    Supplier              @relation(fields: [supplierId], references: [id])
-  warehouse   Warehouse             @relation(fields: [warehouseId], references: [id])
-  items       SupplierInvoiceItem[]
+  id           String                @id @default(uuid())
+  userId       String
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoiceNo    String
+  supplierId   String
+  warehouseId  String?
+  date         DateTime
+  imagePath    String?
+  shippingCost Float?                @default(0)
+  weight       Float?                @default(0)
+  grandTotal   Float                 @default(0)
+  paidAmount   Float                 @default(0)
+  due          Float                 @default(0)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @default(now()) @updatedAt
+  supplier     Supplier              @relation(fields: [supplierId], references: [id])
+  warehouse    Warehouse?            @relation(fields: [warehouseId], references: [id])
+  items        SupplierInvoiceItem[]
 
   @@unique([userId, invoiceNo])
 }
