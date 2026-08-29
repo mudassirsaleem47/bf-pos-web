@@ -44,7 +44,7 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
     { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
     { label: 'POS (Cashier)', path: '/pos', icon: ShoppingCartIcon },
     { label: 'Pre-Orders', path: '/pre-orders', icon: PreOrderIcon },
-    { label: 'Products', path: '/products', icon: ProductsIcon },
+    { label: 'Manage Items', path: '/products', icon: ProductsIcon },
     { label: 'Brands', path: '/categories', icon: CategoriesIcon },
     { label: 'Suppliers', path: '/suppliers', icon: SuppliersIcon },
     { label: 'Supplier Invoices', path: '/suppliers-invoice', icon: SuppliersInvoiceIcon },
@@ -63,6 +63,9 @@ const Sidebar = ({ isOpen, toggleSidebar, isMobile, isCollapsed }) => {
 
   const isActive = (path) => {
     if (path === '/dashboard' && (currentPath === '/' || currentPath === '/dashboard')) {
+      return true;
+    }
+    if (path === '/products' && (currentPath.startsWith('/products') || currentPath.startsWith('/manage'))) {
       return true;
     }
     return currentPath === path;

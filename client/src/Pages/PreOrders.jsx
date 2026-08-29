@@ -77,7 +77,11 @@ const PreOrders = () => {
   const [successMsg, setSuccessMsg] = useState('');
 
   // Status Filter State
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(() => sessionStorage.getItem('preorders_status_filter') || 'all');
+
+  useEffect(() => {
+    sessionStorage.setItem('preorders_status_filter', statusFilter);
+  }, [statusFilter]);
 
   // Selected for Bulk Actions
   const [selected, setSelected] = useState([]);
@@ -330,12 +334,31 @@ const PreOrders = () => {
         if (prod) {
           current.name = prod.name;
           current.price = prod.price > 0 ? prod.price : (prod.supplierPrice || 0);
+          const q = parseFloat(current.quantity) || 1;
+          current.total = q * current.price;
+        }
+      } else if (field === 'price') {
+        const q = parseFloat(current.quantity) || 0;
+        const p = parseFloat(value) || 0;
+        current.total = parseFloat((q * p).toFixed(2));
+      } else if (field === 'total') {
+        const q = parseFloat(current.quantity) || 0;
+        const t = parseFloat(value) || 0;
+        current.total = value === '' ? '' : t;
+        if (q > 0 && value !== '') {
+          current.price = parseFloat((t / q).toFixed(2));
+        }
+      } else if (field === 'quantity') {
+        const q = parseFloat(value) || 0;
+        const p = parseFloat(current.price) || 0;
+        const t = parseFloat(current.total) || 0;
+        if (p > 0) {
+          current.total = parseFloat((q * p).toFixed(2));
+        } else if (t > 0 && q > 0) {
+          current.price = parseFloat((t / q).toFixed(2));
         }
       }
 
-      const q = parseFloat(current.quantity) || 0;
-      const p = parseFloat(current.price) || 0;
-      current.total = q * p;
       updated[idx] = current;
       return updated;
     });
@@ -894,6 +917,7 @@ const PreOrders = () => {
           selected={selected}
           onSelectedChange={setSelected}
           searchPlaceholder="Search order number, customer, phone..."
+          storageKey="preorders_table"
           bulkActions={[
             {
               label: 'Delete Selected',
@@ -1086,8 +1110,15 @@ const PreOrders = () => {
                           slotProps={{ htmlInput: { min: 0, step: 'any' } }}
                         />
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>
-                        {currency}{parseFloat(item.total).toFixed(2)}
+                      <TableCell>
+                        <TextField
+                          type="number"
+                          size="small"
+                          fullWidth
+                          value={item.total}
+                          onChange={(e) => handleItemChange(idx, 'total', e.target.value)}
+                          slotProps={{ htmlInput: { min: 0, step: 'any' } }}
+                        />
                       </TableCell>
                       <TableCell align="right">
                         <IconButton size="small" color="error" onClick={() => handleRemoveItemRow(idx)}>

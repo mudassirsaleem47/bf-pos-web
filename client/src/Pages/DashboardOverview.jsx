@@ -66,10 +66,38 @@ const DashboardOverview = () => {
   const [expenses, setExpenses] = useState([]);
   const [currency, setCurrency] = useState('Rs.');
 
-  // Date Filter States
-  const [dateFilter, setDateFilter] = useState('365days'); // Default to 365 days
+  // Date Filter States (Persisted)
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const y = sessionStorage.getItem('dashboard_year');
+    return y ? parseInt(y, 10) : dayjs().year();
+  });
+  const [selectedMonth, setSelectedMonth] = useState(() => sessionStorage.getItem('dashboard_month') || 'all');
+  const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('dashboard_date_filter') || 'bymonth');
   const [customStartDate, setCustomStartDate] = useState(dayjs().subtract(30, 'day'));
   const [customEndDate, setCustomEndDate] = useState(dayjs());
+  const [chartTab, setChartTab] = useState(() => sessionStorage.getItem('dashboard_chart_tab') || 'bymonth');
+
+  useEffect(() => {
+    sessionStorage.setItem('dashboard_year', selectedYear.toString());
+  }, [selectedYear]);
+
+  useEffect(() => {
+    sessionStorage.setItem('dashboard_month', selectedMonth);
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    sessionStorage.setItem('dashboard_date_filter', dateFilter);
+  }, [dateFilter]);
+
+  useEffect(() => {
+    sessionStorage.setItem('dashboard_chart_tab', chartTab);
+  }, [chartTab]);
+
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const FULL_MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
 
   // Get start and end date based on dateFilter selection
   const getFilterDateRange = () => {
@@ -78,6 +106,16 @@ const DashboardOverview = () => {
     let end = now.endOf('day');
 
     switch (dateFilter) {
+      case 'bymonth':
+        if (selectedMonth === 'all') {
+          start = dayjs().year(selectedYear).startOf('year');
+          end = dayjs().year(selectedYear).endOf('year');
+        } else {
+          const m = parseInt(selectedMonth, 10);
+          start = dayjs().year(selectedYear).month(m).startOf('month');
+          end = dayjs().year(selectedYear).month(m).endOf('month');
+        }
+        break;
       case 'today':
         start = now.startOf('day');
         end = now.endOf('day');
@@ -122,6 +160,11 @@ const DashboardOverview = () => {
     return true;
   };
 
+  const handleSelectMonth = (monthIdx) => {
+    setDateFilter('bymonth');
+    setSelectedMonth(monthIdx === 'all' ? 'all' : String(monthIdx));
+  };
+
   // Filtered Datasets
   const filteredSales = sales.filter(s => filterByDate(s.createdAt));
   const filteredSupplierInvoices = supplierInvoices.filter(s => filterByDate(s.date || s.createdAt));
@@ -129,30 +172,57 @@ const DashboardOverview = () => {
   const filteredCustomers = customers.filter(c => filterByDate(c.createdAt));
   const filteredExpenses = expenses.filter(e => filterByDate(e.date || e.createdAt));
 
-  // Chart Tab State
-  const [chartTab, setChartTab] = useState('1week'); // Default to 1 week
-
   // Get aggregated sales data for the chart based on selected tab
   const getChartData = () => {
     const now = dayjs();
     const chartData = [];
 
-    if (chartTab === 'today') {
+    if (chartTab === 'bymonth') {
+      // 12 months for selectedYear
+      for (let m = 0; m < 12; m++) {
+        const mStart = dayjs().year(selectedYear).month(m).startOf('month');
+        const mEnd = dayjs().year(selectedYear).month(m).endOf('month');
+        const monthSales = sales.filter(s => {
+          const d = dayjs(s.createdAt);
+          return d.isAfter(mStart.subtract(1, 'second')) && d.isBefore(mEnd.add(1, 'second'));
+        });
+        const total = monthSales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
+        chartData.push({
+          label: MONTH_NAMES[m],
+          fullLabel: `${FULL_MONTH_NAMES[m]} ${selectedYear}`,
+          monthIndex: m,
+          amount: total,
+          count: monthSales.length,
+          isSelected: selectedMonth !== 'all' && parseInt(selectedMonth, 10) === m
+        });
+      }
+    } else if (chartTab === 'daily') {
+      const targetM = selectedMonth !== 'all' ? parseInt(selectedMonth, 10) : now.month();
+      const daysInMonth = dayjs().year(selectedYear).month(targetM).daysInMonth();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dayDate = dayjs().year(selectedYear).month(targetM).date(d);
+        const daySales = sales.filter(s => dayjs(s.createdAt).isSame(dayDate, 'day'));
+        const total = daySales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
+        chartData.push({
+          label: `${d}`,
+          fullLabel: dayDate.format('DD MMM YYYY'),
+          amount: total,
+          count: daySales.length
+        });
+      }
+    } else if (chartTab === 'today') {
       // Group by hours (last 6 2-hour intervals ending now)
       for (let i = 5; i >= 0; i--) {
         const targetHour = now.subtract(i * 2, 'hour');
         const label = targetHour.format('hh A');
-
         const windowStart = targetHour.subtract(2, 'hour').add(1, 'second');
         const windowEnd = targetHour;
-
         const salesInWindow = sales.filter(s => {
           const saleTime = dayjs(s.createdAt);
           return saleTime.isAfter(windowStart.subtract(1, 'second')) && saleTime.isBefore(windowEnd.add(1, 'second'));
         });
-
         const total = salesInWindow.reduce((sum, s) => sum + s.totalAmount, 0);
-        chartData.push({ label, amount: total });
+        chartData.push({ label, amount: total, count: salesInWindow.length });
       }
     } else if (chartTab === '1week') {
       // Last 7 days
@@ -161,21 +231,7 @@ const DashboardOverview = () => {
         const label = date.format('ddd'); // Mon, Tue, etc.
         const salesOnDate = sales.filter(s => dayjs(s.createdAt).isSame(date, 'day'));
         const total = salesOnDate.reduce((sum, s) => sum + s.totalAmount, 0);
-        chartData.push({ label, amount: total });
-      }
-    } else if (chartTab === '1month') {
-      // Last 30 days grouped into 6 intervals of 5 days each
-      for (let i = 5; i >= 0; i--) {
-        const startDate = now.subtract((i * 5) + 4, 'day').startOf('day');
-        const endDate = now.subtract(i * 5, 'day').endOf('day');
-        const label = `${startDate.format('D')}-${endDate.format('D')} ${endDate.format('MMM')}`;
-
-        const salesInRange = sales.filter(s => {
-          const d = dayjs(s.createdAt);
-          return d.isAfter(startDate.subtract(1, 'second')) && d.isBefore(endDate.add(1, 'second'));
-        });
-        const total = salesInRange.reduce((sum, s) => sum + s.totalAmount, 0);
-        chartData.push({ label, amount: total });
+        chartData.push({ label, amount: total, count: salesOnDate.length });
       }
     }
     return chartData;
@@ -196,109 +252,137 @@ const DashboardOverview = () => {
     const chartWidth = svgWidth - paddingLeft - paddingRight;
     const chartHeight = svgHeight - paddingTop - paddingBottom;
 
-    const barWidth = (chartWidth / data.length) * 0.55;
+    const barWidth = Math.min((chartWidth / data.length) * 0.65, 32);
     const barSpacing = chartWidth / data.length;
 
     // Y Axis ticks (4 ticks: 0%, 33%, 66%, 100%)
     const yTicks = [0, 0.33, 0.66, 1];
 
     return (
-      <Box sx={{ width: '100%', height: svgHeight, display: 'flex', justifyContent: 'center' }}>
-        <svg width="100%" height="100%" viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="xMidYMid meet">
-          <defs>
-            <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#2563eb" />
-              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.3" />
-            </linearGradient>
-          </defs>
+      <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Box sx={{ width: '100%', height: svgHeight, display: 'flex', justifyContent: 'center' }}>
+          <svg width="100%" height="100%" viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <linearGradient id="barGradientNormal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#2563eb" />
+                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.5" />
+              </linearGradient>
+              <linearGradient id="barGradientSelected" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f59e0b" />
+                <stop offset="100%" stopColor="#d97706" />
+              </linearGradient>
+              <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#f59e0b" floodOpacity="0.5"/>
+              </filter>
+            </defs>
 
-          {/* Grid lines & Y Labels */}
-          {yTicks.map((tick, idx) => {
-            const y = paddingTop + chartHeight * (1 - tick);
-            const val = (maxAmount * tick).toFixed(0);
-            return (
-              <g key={idx}>
-                <line
-                  x1={paddingLeft}
-                  y1={y}
-                  x2={svgWidth - paddingRight}
-                  y2={y}
-                  stroke="#e2e8f0"
-                  strokeWidth="1"
-                  strokeDasharray="4 4"
-                />
-                <text
-                  x={paddingLeft - 10}
-                  y={y + 4}
-                  fill="#94a3b8"
-                  fontSize="10"
-                  textAnchor="end"
-                  fontWeight="600"
+            {/* Grid lines & Y Labels */}
+            {yTicks.map((tick, idx) => {
+              const y = paddingTop + chartHeight * (1 - tick);
+              const val = (maxAmount * tick).toFixed(0);
+              return (
+                <g key={idx}>
+                  <line
+                    x1={paddingLeft}
+                    y1={y}
+                    x2={svgWidth - paddingRight}
+                    y2={y}
+                    stroke="#e2e8f0"
+                    strokeWidth="1"
+                    strokeDasharray="4 4"
+                  />
+                  <text
+                    x={paddingLeft - 10}
+                    y={y + 4}
+                    fill="#94a3b8"
+                    fontSize="10"
+                    textAnchor="end"
+                    fontWeight="600"
+                  >
+                    {currency}{val}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Bars */}
+            {data.map((item, idx) => {
+              const barHeight = (item.amount / maxAmount) * chartHeight;
+              const x = paddingLeft + (idx * barSpacing) + (barSpacing - barWidth) / 2;
+              const y = paddingTop + chartHeight - barHeight;
+              const isSelected = item.isSelected;
+              const isClickable = item.monthIndex !== undefined;
+
+              return (
+                <g
+                  key={idx}
+                  style={{ cursor: isClickable ? 'pointer' : 'default' }}
+                  onClick={() => {
+                    if (isClickable) {
+                      handleSelectMonth(item.monthIndex);
+                    }
+                  }}
                 >
-                  {currency}{val}
-                </text>
-              </g>
-            );
-          })}
+                  <title>{`${item.fullLabel || item.label}: ${currency}${item.amount.toFixed(2)} (${item.count || 0} sales)`}</title>
+                  {/* Bar */}
+                  <rect
+                    x={x}
+                    y={Math.min(y, paddingTop + chartHeight - 2)}
+                    width={barWidth}
+                    height={Math.max(barHeight, 2)}
+                    rx="3"
+                    fill={isSelected ? 'url(#barGradientSelected)' : 'url(#barGradientNormal)'}
+                    filter={isSelected ? 'url(#glow)' : 'none'}
+                    stroke={isSelected ? '#b45309' : 'none'}
+                    strokeWidth={isSelected ? 1.5 : 0}
+                    style={{ transition: 'all 0.25s ease' }}
+                  />
 
-          {/* Bars */}
-          {data.map((item, idx) => {
-            const barHeight = (item.amount / maxAmount) * chartHeight;
-            const x = paddingLeft + (idx * barSpacing) + (barSpacing - barWidth) / 2;
-            const y = paddingTop + chartHeight - barHeight;
+                  {/* Value on top of bar */}
+                  {item.amount > 0 && (
+                    <text
+                      x={x + barWidth / 2}
+                      y={y - 6}
+                      fill={isSelected ? '#b45309' : '#1e293b'}
+                      fontSize="9"
+                      fontWeight={isSelected ? '800' : '700'}
+                      textAnchor="middle"
+                    >
+                      {item.amount >= 1000 ? `${(item.amount / 1000).toFixed(1)}k` : item.amount.toFixed(0)}
+                    </text>
+                  )}
 
-            return (
-              <g key={idx}>
-                {/* Bar */}
-                <rect
-                  x={x}
-                  y={y}
-                  width={barWidth}
-                  height={barHeight}
-                  rx="3"
-                  fill="url(#barGradient)"
-                  style={{ transition: 'all 0.3s ease' }}
-                />
-
-                {/* Hover overlay text / value on top of bar */}
-                {item.amount > 0 && (
+                  {/* X Axis Label */}
                   <text
                     x={x + barWidth / 2}
-                    y={y - 6}
-                    fill="#1e293b"
-                    fontSize="9"
-                    fontWeight="700"
+                    y={paddingTop + chartHeight + 18}
+                    fill={isSelected ? '#b45309' : '#64748b'}
+                    fontSize={isSelected ? '11' : '10'}
+                    fontWeight={isSelected ? '800' : '600'}
                     textAnchor="middle"
                   >
-                    {item.amount.toFixed(0)}
+                    {item.label}
                   </text>
-                )}
+                </g>
+              );
+            })}
 
-                {/* X Axis Label */}
-                <text
-                  x={x + barWidth / 2}
-                  y={paddingTop + chartHeight + 20}
-                  fill="#64748b"
-                  fontSize="10"
-                  fontWeight="600"
-                  textAnchor="middle"
-                >
-                  {item.label}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* X Axis Line */}
-          <line
-            x1={paddingLeft}
-            y1={paddingTop + chartHeight}
-            x2={svgWidth - paddingRight}
-            y2={paddingTop + chartHeight}
-            stroke="#cbd5e1"
-            strokeWidth="1.5"
-          />
-        </svg>
+            {/* X Axis Line */}
+            <line
+              x1={paddingLeft}
+              y1={paddingTop + chartHeight}
+              x2={svgWidth - paddingRight}
+              y2={paddingTop + chartHeight}
+              stroke="#cbd5e1"
+              strokeWidth="1.5"
+            />
+          </svg>
+        </Box>
+        {chartTab === 'bymonth' && (
+          <Typography variant="caption" sx={{ color: '#64748b', mt: 0.5, fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            💡 <strong>Interactive Chart:</strong> Click any month bar (Jan - Dec) to instantly view that month's full analytics.
+          </Typography>
+        )}
       </Box>
     );
   };
@@ -489,19 +573,33 @@ const DashboardOverview = () => {
       >
         <LocalizationProvider dateAdapter={AdapterDayjs}>
           <Grid container spacing={2} alignItems="center" justifyContent="space-between">
-            <Grid size={{ xs: 12, md: 4 }}>
-              <Typography variant="body2" sx={{ fontWeight: 700, color: '#475569', fontSize: '0.85rem', tracking: '0.5px', textTransform: 'uppercase' }}>
-                {dateFilter === 'today' && "Today's Report Overview"}
-                {dateFilter === 'yesterday' && "Yesterday's Report Overview"}
-                {dateFilter === 'thisweek' && "This Week's Report Overview"}
-                {dateFilter === 'thismonth' && "This Month's Report Overview"}
-                {dateFilter === '30days' && "Last 30 Days Report Overview"}
-                {dateFilter === '365days' && "Last 365 Days Report Overview"}
-                {dateFilter === 'all' && "All Time Report Overview"}
-                {dateFilter === 'custom' && `Report: ${customStartDate ? customStartDate.format('DD/MM/YYYY') : '...'} to ${customEndDate ? customEndDate.format('DD/MM/YYYY') : '...'}`}
-              </Typography>
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#475569', fontSize: '0.85rem', tracking: '0.5px', textTransform: 'uppercase' }}>
+                  {dateFilter === 'bymonth' && (selectedMonth === 'all' ? `Yearly Overview (${selectedYear})` : `${FULL_MONTH_NAMES[parseInt(selectedMonth, 10)]} ${selectedYear} Report`)}
+                  {dateFilter === 'today' && "Today's Report Overview"}
+                  {dateFilter === 'yesterday' && "Yesterday's Report Overview"}
+                  {dateFilter === 'thisweek' && "This Week's Report Overview"}
+                  {dateFilter === 'thismonth' && "This Month's Report Overview"}
+                  {dateFilter === '30days' && "Last 30 Days Report Overview"}
+                  {dateFilter === '365days' && "Last 365 Days Report Overview"}
+                  {dateFilter === 'all' && "All Time Report Overview"}
+                  {dateFilter === 'custom' && `Report: ${customStartDate ? customStartDate.format('DD/MM/YYYY') : '...'} to ${customEndDate ? customEndDate.format('DD/MM/YYYY') : '...'}`}
+                </Typography>
+
+                {dateFilter === 'bymonth' && selectedMonth !== 'all' && (
+                  <Chip
+                    label="View Full Year"
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    onClick={() => setSelectedMonth('all')}
+                    sx={{ fontSize: '0.72rem', height: 22, cursor: 'pointer', fontWeight: 600 }}
+                  />
+                )}
+              </Box>
             </Grid>
-            <Grid size={{ xs: 12, md: 8 }} sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+            <Grid size={{ xs: 12, md: 7 }} sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}
                 spacing={2}
@@ -509,7 +607,23 @@ const DashboardOverview = () => {
                 alignItems="center"
                 sx={{ width: '100%' }}
               >
-                <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
+                {dateFilter === 'bymonth' && (
+                  <FormControl size="small" sx={{ minWidth: 100 }}>
+                    <InputLabel id="year-select-label">Year</InputLabel>
+                    <Select
+                      labelId="year-select-label"
+                      value={selectedYear}
+                      label="Year"
+                      onChange={(e) => setSelectedYear(e.target.value)}
+                    >
+                      {[2023, 2024, 2025, 2026, 2027, 2028].map(yr => (
+                        <MenuItem key={yr} value={yr}>{yr}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+
+                <FormControl size="small" sx={{ minWidth: 170, width: { xs: '100%', sm: 'auto' } }}>
                   <InputLabel id="date-filter-label">Period</InputLabel>
                   <Select
                     labelId="date-filter-label"
@@ -517,6 +631,7 @@ const DashboardOverview = () => {
                     label="Period"
                     onChange={(e) => setDateFilter(e.target.value)}
                   >
+                    <MenuItem value="bymonth">By Month (Meta Suite)</MenuItem>
                     <MenuItem value="today">Today</MenuItem>
                     <MenuItem value="yesterday">Yesterday</MenuItem>
                     <MenuItem value="thisweek">This Week</MenuItem>
@@ -570,6 +685,44 @@ const DashboardOverview = () => {
               </Stack>
             </Grid>
           </Grid>
+
+          {/* Meta Suite Style Month Selector Ribbon */}
+          {dateFilter === 'bymonth' && (
+            <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', mr: 0.5, fontSize: '0.75rem' }}>
+                Select Month:
+              </Typography>
+              <Chip
+                label="All Months"
+                size="small"
+                onClick={() => setSelectedMonth('all')}
+                variant={selectedMonth === 'all' ? 'filled' : 'outlined'}
+                color={selectedMonth === 'all' ? 'primary' : 'default'}
+                sx={{ fontWeight: selectedMonth === 'all' ? 700 : 500, fontSize: '0.75rem', cursor: 'pointer' }}
+              />
+              {MONTH_NAMES.map((mName, mIdx) => {
+                const isSelected = selectedMonth !== 'all' && parseInt(selectedMonth, 10) === mIdx;
+                return (
+                  <Chip
+                    key={mName}
+                    label={mName}
+                    size="small"
+                    onClick={() => setSelectedMonth(String(mIdx))}
+                    variant={isSelected ? 'filled' : 'outlined'}
+                    color={isSelected ? 'primary' : 'default'}
+                    sx={{
+                      fontWeight: isSelected ? 700 : 500,
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      bgcolor: isSelected ? '#2563eb' : undefined,
+                      color: isSelected ? '#ffffff' : undefined,
+                      '&:hover': { bgcolor: isSelected ? '#1d4ed8' : '#f1f5f9' }
+                    }}
+                  />
+                );
+              })}
+            </Box>
+          )}
         </LocalizationProvider>
       </Card>
 
@@ -772,7 +925,7 @@ const DashboardOverview = () => {
       {/* 5. Bottom Section: Sales Chart & Recent Invoices */}
       <Grid container spacing={3}>
         {/* Left Column: Sales Chart with Tabs */}
-        <Grid size={{ xs: 12, lg: 5 }}>
+        <Grid size={{ xs: 12, lg: 7 }}>
           <Card
             sx={{
               bgcolor: '#ffffff',
@@ -782,13 +935,20 @@ const DashboardOverview = () => {
               p: 2.5,
               display: 'flex',
               flexDirection: 'column',
-              height: 380
+              height: 400
             }}
           >
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155', fontSize: '0.85rem' }}>
-                Sales Performance
-              </Typography>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155', fontSize: '0.85rem' }}>
+                  Sales Performance ({selectedYear})
+                </Typography>
+                {selectedMonth !== 'all' && (
+                  <Typography variant="caption" sx={{ color: '#2563eb', fontWeight: 600 }}>
+                    Selected: {FULL_MONTH_NAMES[parseInt(selectedMonth, 10)]}
+                  </Typography>
+                )}
+              </Box>
 
               <Tabs
                 value={chartTab}
@@ -800,16 +960,17 @@ const DashboardOverview = () => {
                   '& .MuiTab-root': {
                     minHeight: 28,
                     py: 0.5,
-                    px: 1.5,
+                    px: 1.25,
                     fontSize: '0.72rem',
                     fontWeight: 700,
                     textTransform: 'none'
                   }
                 }}
               >
-                <Tab label="Today" value="today" />
+                <Tab label="By Month (Jan-Dec)" value="bymonth" />
+                <Tab label="Daily" value="daily" />
                 <Tab label="1 Week" value="1week" />
-                <Tab label="1 Month" value="1month" />
+                <Tab label="Today" value="today" />
               </Tabs>
             </Box>
 
@@ -820,7 +981,7 @@ const DashboardOverview = () => {
         </Grid>
 
         {/* Right Column: Recent Invoices Table */}
-        <Grid size={{ xs: 12, lg: 7 }}>
+        <Grid size={{ xs: 12, lg: 5 }}>
           <Card
             sx={{
               bgcolor: '#ffffff',
@@ -828,7 +989,7 @@ const DashboardOverview = () => {
               border: '1px solid #e5e7eb',
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
               p: 2.5,
-              height: 380,
+              height: 400,
               display: 'flex',
               flexDirection: 'column'
             }}

@@ -565,6 +565,7 @@ const Customers = () => {
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
           searchPlaceholder="Search customers..."
+          storageKey="customers_table"
           renderExpandedRow={renderCustomerHistory}
         />
       </Card>

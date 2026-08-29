@@ -44,10 +44,17 @@ const ReceivablesPayables = () => {
   const [loans, setLoans] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
-  const [tabValue, setTabValue] = useState(0);
+  const [tabValue, setTabValue] = useState(() => {
+    const s = sessionStorage.getItem('rp_tab');
+    return s !== null ? parseInt(s, 10) : 0;
+  });
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    sessionStorage.setItem('rp_tab', tabValue.toString());
+  }, [tabValue]);
   const [successMsg, setSuccessMsg] = useState('');
   const [currency, setCurrency] = useState('Rs.');
 
@@ -541,6 +548,7 @@ const ReceivablesPayables = () => {
             onSelectedChange={setSelected}
             bulkActions={bulkActions}
             searchPlaceholder="Search party name..."
+            storageKey="rp_loans_table"
           />
         </Card>
       )}
@@ -552,6 +560,7 @@ const ReceivablesPayables = () => {
             data={customers.filter(c => c.balance > 0)}
             loading={loading}
             searchPlaceholder="Search customer..."
+            storageKey="rp_customers_table"
           />
         </Card>
       )}
@@ -563,6 +572,7 @@ const ReceivablesPayables = () => {
             data={invoices.filter(inv => inv.due > 0)}
             loading={loading}
             searchPlaceholder="Search invoice..."
+            storageKey="rp_invoices_table"
           />
         </Card>
       )}

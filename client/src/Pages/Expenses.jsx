@@ -420,6 +420,7 @@ const Expenses = () => {
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
           searchPlaceholder="Search expense transactions..."
+          storageKey="expenses_table"
         />
       </Card>
 

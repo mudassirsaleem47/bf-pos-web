@@ -42,16 +42,43 @@ const Reports = () => {
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState(() => sessionStorage.getItem('reports_category') || 'all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currency, setCurrency] = useState('Rs.');
   const [storeName, setStoreName] = useState('BF Makeup');
 
-  // Date Filter States
-  const [dateFilter, setDateFilter] = useState('365days'); // Default to 365 days
+  // Date Filter States (Persisted)
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const y = sessionStorage.getItem('reports_year');
+    return y ? parseInt(y, 10) : dayjs().year();
+  });
+  const [selectedMonth, setSelectedMonth] = useState(() => sessionStorage.getItem('reports_month') || 'all');
+  const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reports_date_filter') || 'bymonth');
   const [customStartDate, setCustomStartDate] = useState(dayjs().subtract(30, 'day'));
   const [customEndDate, setCustomEndDate] = useState(dayjs());
+
+  useEffect(() => {
+    sessionStorage.setItem('reports_category', selectedCategory);
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    sessionStorage.setItem('reports_year', selectedYear.toString());
+  }, [selectedYear]);
+
+  useEffect(() => {
+    sessionStorage.setItem('reports_month', selectedMonth);
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    sessionStorage.setItem('reports_date_filter', dateFilter);
+  }, [dateFilter]);
+
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const FULL_MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
 
   // Get start and end date based on dateFilter selection
   const getFilterDateRange = () => {
@@ -60,6 +87,16 @@ const Reports = () => {
     let end = now.endOf('day');
 
     switch (dateFilter) {
+      case 'bymonth':
+        if (selectedMonth === 'all') {
+          start = dayjs().year(selectedYear).startOf('year');
+          end = dayjs().year(selectedYear).endOf('year');
+        } else {
+          const m = parseInt(selectedMonth, 10);
+          start = dayjs().year(selectedYear).month(m).startOf('month');
+          end = dayjs().year(selectedYear).month(m).endOf('month');
+        }
+        break;
       case 'today':
         start = now.startOf('day');
         end = now.endOf('day');
@@ -381,6 +418,23 @@ const Reports = () => {
             alignItems="center"
             sx={{ width: { xs: '100%', md: 'auto' }, flexWrap: 'wrap', gap: { xs: 1, sm: 0 } }}
           >
+            {dateFilter === 'bymonth' && (
+              <FormControl size="small" sx={{ minWidth: 100 }}>
+                <InputLabel id="report-year-select-label">Year</InputLabel>
+                <Select
+                  labelId="report-year-select-label"
+                  value={selectedYear}
+                  label="Year"
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                  sx={{ bgcolor: '#ffffff', borderRadius: 2 }}
+                >
+                  {[2023, 2024, 2025, 2026, 2027, 2028].map(yr => (
+                    <MenuItem key={yr} value={yr}>{yr}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+
             {/* Date Filter Dropdown */}
             <FormControl size="small" sx={{ minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>
               <InputLabel id="date-filter-label">Period</InputLabel>
@@ -391,6 +445,7 @@ const Reports = () => {
                 onChange={(e) => setDateFilter(e.target.value)}
                 sx={{ bgcolor: '#ffffff', borderRadius: 2 }}
               >
+                <MenuItem value="bymonth">By Month (Meta Suite)</MenuItem>
                 <MenuItem value="today">Today</MenuItem>
                 <MenuItem value="yesterday">Yesterday</MenuItem>
                 <MenuItem value="thisweek">This Week</MenuItem>
@@ -468,6 +523,44 @@ const Reports = () => {
           </Stack>
         </LocalizationProvider>
       </Box>
+
+      {/* Month Selector Ribbon for Reports */}
+      {dateFilter === 'bymonth' && (
+        <Card sx={{ p: 2, bgcolor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', mr: 0.5, fontSize: '0.8rem' }}>
+            Filter by Month ({selectedYear}):
+          </Typography>
+          <Chip
+            label="All Months (Yearly)"
+            size="small"
+            onClick={() => setSelectedMonth('all')}
+            variant={selectedMonth === 'all' ? 'filled' : 'outlined'}
+            color={selectedMonth === 'all' ? 'primary' : 'default'}
+            sx={{ fontWeight: selectedMonth === 'all' ? 700 : 500, fontSize: '0.75rem', cursor: 'pointer' }}
+          />
+          {MONTH_NAMES.map((mName, mIdx) => {
+            const isSelected = selectedMonth !== 'all' && parseInt(selectedMonth, 10) === mIdx;
+            return (
+              <Chip
+                key={mName}
+                label={mName}
+                size="small"
+                onClick={() => setSelectedMonth(String(mIdx))}
+                variant={isSelected ? 'filled' : 'outlined'}
+                color={isSelected ? 'primary' : 'default'}
+                sx={{
+                  fontWeight: isSelected ? 700 : 500,
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  bgcolor: isSelected ? '#2563eb' : undefined,
+                  color: isSelected ? '#ffffff' : undefined,
+                  '&:hover': { bgcolor: isSelected ? '#1d4ed8' : '#f1f5f9' }
+                }}
+              />
+            );
+          })}
+        </Card>
+      )}
 
       {error && <Alert severity="error">{error}</Alert>}
 

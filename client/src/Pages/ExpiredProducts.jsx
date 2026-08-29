@@ -340,6 +340,7 @@ const ExpiredProducts = () => {
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
           searchPlaceholder="Search expired products..."
+          storageKey="expired_table"
         />
       </Card>
 

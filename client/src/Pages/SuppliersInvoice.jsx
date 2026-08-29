@@ -119,10 +119,27 @@ const SuppliersInvoice = () => {
   const handleItemChange = (index, field, value) => {
     const updated = [...items];
     updated[index] = { ...updated[index], [field]: value };
-    // Recalculate total
+    
     const qty = parseFloat(field === 'quantity' ? value : updated[index].quantity) || 0;
-    const rate = parseFloat(field === 'rate' ? value : updated[index].rate) || 0;
-    updated[index].total = parseFloat((qty * rate).toFixed(2));
+
+    if (field === 'rate') {
+      const rate = parseFloat(value) || 0;
+      updated[index].total = parseFloat((qty * rate).toFixed(2));
+    } else if (field === 'total') {
+      const totalVal = parseFloat(value) || 0;
+      updated[index].total = value === '' ? '' : totalVal;
+      if (qty > 0 && value !== '') {
+        updated[index].rate = parseFloat((totalVal / qty).toFixed(2));
+      }
+    } else if (field === 'quantity') {
+      const enteredRate = parseFloat(updated[index].rate);
+      const enteredTotal = parseFloat(updated[index].total);
+      if (!isNaN(enteredRate) && enteredRate > 0) {
+        updated[index].total = parseFloat((qty * enteredRate).toFixed(2));
+      } else if (!isNaN(enteredTotal) && enteredTotal > 0 && qty > 0) {
+        updated[index].rate = parseFloat((enteredTotal / qty).toFixed(2));
+      }
+    }
     setItems(updated);
   };
 
@@ -269,7 +286,7 @@ const SuppliersInvoice = () => {
         i + 1,
         item.itemName,
         item.quantity,
-        item.rate.toFixed(2),
+        (item.rate && item.rate > 0) ? item.rate.toFixed(2) : (item.quantity > 0 && item.total > 0 ? (item.total / item.quantity).toFixed(2) : '-'),
         item.total.toFixed(2),
       ]),
       styles: { fontSize: 9, cellPadding: 3, textColor: [71, 85, 105] },
@@ -601,7 +618,7 @@ const SuppliersInvoice = () => {
           <Table size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                {['Item Name *', 'Quantity *', 'Rate *', 'Total', 'Action'].map(h => (
+                {['Item Name *', 'Quantity *', 'Rate (Optional)', 'Total Price *', 'Action'].map(h => (
                   <TableCell key={h} sx={{ fontWeight: 700, color: '#475569', fontSize: '0.8rem', py: 1.5 }}>
                     {h}
                   </TableCell>
@@ -642,10 +659,9 @@ const SuppliersInvoice = () => {
                       variant="outlined"
                       size="small"
                       type="number"
-                      placeholder="0.00"
+                      placeholder="Rate (Opt)"
                       inputProps={{ min: 0, step: 'any' }}
                       value={item.rate}
-                      required
                       onChange={(e) => handleItemChange(idx, 'rate', e.target.value)}
                       sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.85rem' } }}
                       fullWidth
@@ -655,9 +671,12 @@ const SuppliersInvoice = () => {
                     <TextField
                       variant="outlined"
                       size="small"
-                      value={item.total.toFixed(2)}
-                      disabled
-                      sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.85rem', bgcolor: '#f8fafc' } }}
+                      type="number"
+                      placeholder="0.00"
+                      inputProps={{ min: 0, step: 'any' }}
+                      value={item.total}
+                      onChange={(e) => handleItemChange(idx, 'total', e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.85rem' } }}
                       fullWidth
                     />
                   </TableCell>
@@ -881,7 +900,11 @@ const SuppliersInvoice = () => {
                         <TableCell sx={{ color: '#94a3b8', fontSize: '0.8rem' }}>{idx + 1}</TableCell>
                         <TableCell sx={{ fontWeight: 500 }}>{item.itemName}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
-                        <TableCell>Rs. {item.rate.toFixed(2)}</TableCell>
+                        <TableCell>
+                          {(item.rate && item.rate > 0)
+                            ? `Rs. ${item.rate.toFixed(2)}`
+                            : (item.quantity > 0 && item.total > 0 ? `Rs. ${(item.total / item.quantity).toFixed(2)}` : '-')}
+                        </TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Rs. {item.total.toFixed(2)}</TableCell>
                       </TableRow>
                     ))}

@@ -416,6 +416,7 @@ const Staff = () => {
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
           searchPlaceholder="Search staff by name or role..."
+          storageKey="staff_table"
         />
       </Card>
 

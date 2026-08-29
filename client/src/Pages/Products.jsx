@@ -53,7 +53,7 @@ const Products = () => {
 
   const [products, setProducts] = useState([]);
   const [currency, setCurrency] = useState('Rs.');
-  const [dateFilter, setDateFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('products_date_filter') || 'all');
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selected, setSelected] = useState([]);
@@ -62,11 +62,23 @@ const Products = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [deleteIds, setDeleteIds] = useState([]);
-  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+  const [showLowStockOnly, setShowLowStockOnly] = useState(() => sessionStorage.getItem('products_lowstock_filter') === 'true');
 
   // Brand (Category) States
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState(() => sessionStorage.getItem('products_brand_filter') || 'all');
+
+  useEffect(() => {
+    sessionStorage.setItem('products_brand_filter', selectedCategory);
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    sessionStorage.setItem('products_lowstock_filter', showLowStockOnly.toString());
+  }, [showLowStockOnly]);
+
+  useEffect(() => {
+    sessionStorage.setItem('products_date_filter', dateFilter);
+  }, [dateFilter]);
 
   // Printable Barcode Dialog
   const [openBarcodeDialog, setOpenBarcodeDialog] = useState(false);
@@ -790,7 +802,7 @@ const Products = () => {
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
-          Products
+          Manage Products & Items
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ width: { xs: '100%', sm: 'auto' } }}>
           {/* Brand Filter */}

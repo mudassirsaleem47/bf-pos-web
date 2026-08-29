@@ -66,25 +66,37 @@ const DataTable = ({
   storageKey = '',
   initialSearchQuery = ''
 }) => {
+  const effectiveStorageKey = storageKey || (typeof window !== 'undefined' ? `dt_page_${window.location.pathname.replace(/[^a-zA-Z0-9]/g, '_')}` : '');
+
   const [searchQuery, setSearchQuery] = useState(() => {
     if (initialSearchQuery) return initialSearchQuery;
-    if (storageKey) {
-      return sessionStorage.getItem(`${storageKey}_search`) || '';
+    if (effectiveStorageKey) {
+      return sessionStorage.getItem(`${effectiveStorageKey}_search`) || '';
     }
     return '';
   });
-  const [orderBy, setOrderBy] = useState('');
-  const [order, setOrder] = useState('asc');
+  const [orderBy, setOrderBy] = useState(() => {
+    if (effectiveStorageKey) {
+      return sessionStorage.getItem(`${effectiveStorageKey}_orderBy`) || '';
+    }
+    return '';
+  });
+  const [order, setOrder] = useState(() => {
+    if (effectiveStorageKey) {
+      return sessionStorage.getItem(`${effectiveStorageKey}_order`) || 'asc';
+    }
+    return 'asc';
+  });
   const [page, setPage] = useState(() => {
-    if (storageKey) {
-      const stored = sessionStorage.getItem(`${storageKey}_page`);
+    if (effectiveStorageKey) {
+      const stored = sessionStorage.getItem(`${effectiveStorageKey}_page`);
       return stored ? parseInt(stored, 10) : 0;
     }
     return 0;
   });
   const [rowsPerPage, setRowsPerPage] = useState(() => {
-    if (storageKey) {
-      const stored = sessionStorage.getItem(`${storageKey}_rpp`);
+    if (effectiveStorageKey) {
+      const stored = sessionStorage.getItem(`${effectiveStorageKey}_rpp`);
       return stored ? parseInt(stored, 10) : 10;
     }
     return 10;
@@ -101,26 +113,33 @@ const DataTable = ({
 
   // Persist search query, page, and rowsPerPage in sessionStorage
   useEffect(() => {
-    if (storageKey) {
+    if (effectiveStorageKey) {
       if (searchQuery) {
-        sessionStorage.setItem(`${storageKey}_search`, searchQuery);
+        sessionStorage.setItem(`${effectiveStorageKey}_search`, searchQuery);
       } else {
-        sessionStorage.removeItem(`${storageKey}_search`);
+        sessionStorage.removeItem(`${effectiveStorageKey}_search`);
       }
     }
-  }, [storageKey, searchQuery]);
+  }, [effectiveStorageKey, searchQuery]);
 
   useEffect(() => {
-    if (storageKey) {
-      sessionStorage.setItem(`${storageKey}_page`, page.toString());
+    if (effectiveStorageKey) {
+      sessionStorage.setItem(`${effectiveStorageKey}_page`, page.toString());
     }
-  }, [storageKey, page]);
+  }, [effectiveStorageKey, page]);
 
   useEffect(() => {
-    if (storageKey) {
-      sessionStorage.setItem(`${storageKey}_rpp`, rowsPerPage.toString());
+    if (effectiveStorageKey) {
+      sessionStorage.setItem(`${effectiveStorageKey}_rpp`, rowsPerPage.toString());
     }
-  }, [storageKey, rowsPerPage]);
+  }, [effectiveStorageKey, rowsPerPage]);
+
+  useEffect(() => {
+    if (effectiveStorageKey) {
+      sessionStorage.setItem(`${effectiveStorageKey}_orderBy`, orderBy);
+      sessionStorage.setItem(`${effectiveStorageKey}_order`, order);
+    }
+  }, [effectiveStorageKey, orderBy, order]);
 
   const toggleRowExpand = (id) => {
     setExpandedRows(prev => ({
@@ -131,12 +150,7 @@ const DataTable = ({
 
   // Storage key for column preferences
   const getColStorageKey = () => {
-    if (storageKey) return `dt_${storageKey}`;
-    if (typeof window !== 'undefined') {
-      const path = window.location.pathname.replace(/[^a-zA-Z0-9]/g, '_');
-      const colSignature = columns.map(c => c.id).sort().join('_');
-      return `dt_cols_${path}_${colSignature}`;
-    }
+    if (effectiveStorageKey) return `dt_${effectiveStorageKey}`;
     return 'dt_cols_default';
   };
 

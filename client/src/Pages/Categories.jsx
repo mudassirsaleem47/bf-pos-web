@@ -298,6 +298,7 @@ const Categories = () => {
               onSelectedChange={setSelected}
               bulkActions={bulkActions}
               searchPlaceholder="Search brands..."
+              storageKey="categories_table"
             />
           </Card>
         </Box>

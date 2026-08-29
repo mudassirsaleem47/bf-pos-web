@@ -312,6 +312,7 @@ const Warehouse = () => {
             onSelectedChange={setSelected}
             bulkActions={bulkActions}
             searchPlaceholder="Search warehouses..."
+            storageKey="warehouses_table"
           />
         </Card>
       ) : (

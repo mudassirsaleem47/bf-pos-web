@@ -445,6 +445,7 @@ const DeadStock = () => {
           onSelectedChange={setSelected}
           bulkActions={bulkActions}
           searchPlaceholder="Search damaged products..."
+          storageKey="deadstock_table"
         />
       </Card>
 

@@ -58,7 +58,10 @@ const Shippings = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedTab, setSelectedTab] = useState(0); // 0 = Orders with Shipping, 1 = Customer Breakdown
+  const [selectedTab, setSelectedTab] = useState(() => {
+    const s = sessionStorage.getItem('shippings_tab');
+    return s !== null ? parseInt(s, 10) : 0;
+  }); // 0 = Orders with Shipping, 1 = Customer Breakdown
 
   // Store settings
   const [storeSettings, setStoreSettings] = useState({
@@ -72,9 +75,25 @@ const Shippings = () => {
   });
 
   // Month & Year Filter State (Default: Current month)
-  const [selectedMonth, setSelectedMonth] = useState(dayjs().format('YYYY-MM')); // e.g. "2026-08"
-  const [filterMode, setFilterMode] = useState('monthly'); // 'monthly' | 'all'
-  const [onlyWithShipping, setOnlyWithShipping] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState(() => sessionStorage.getItem('shippings_month') || dayjs().format('YYYY-MM')); // e.g. "2026-08"
+  const [filterMode, setFilterMode] = useState(() => sessionStorage.getItem('shippings_filtermode') || 'monthly'); // 'monthly' | 'all'
+  const [onlyWithShipping, setOnlyWithShipping] = useState(() => sessionStorage.getItem('shippings_onlyshipping') !== 'false');
+
+  useEffect(() => {
+    sessionStorage.setItem('shippings_tab', selectedTab.toString());
+  }, [selectedTab]);
+
+  useEffect(() => {
+    sessionStorage.setItem('shippings_month', selectedMonth);
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    sessionStorage.setItem('shippings_filtermode', filterMode);
+  }, [filterMode]);
+
+  useEffect(() => {
+    sessionStorage.setItem('shippings_onlyshipping', onlyWithShipping.toString());
+  }, [onlyWithShipping]);
 
   // View Details Modal State
   const [openViewDialog, setOpenViewDialog] = useState(false);
@@ -746,6 +765,7 @@ const Shippings = () => {
               data={filteredSales}
               loading={loading}
               searchPlaceholder="Search customer, phone, receipt #..."
+              storageKey="shippings_orders_table"
             />
           </Box>
         )}
@@ -758,6 +778,7 @@ const Shippings = () => {
               data={customerShippingStats}
               loading={loading}
               searchPlaceholder="Search customer name, phone, address..."
+              storageKey="shippings_customers_table"
             />
           </Box>
         )}

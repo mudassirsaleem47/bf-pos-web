@@ -332,6 +332,7 @@ const Suppliers = () => {
             onSelectedChange={setSelected}
             bulkActions={bulkActions}
             searchPlaceholder="Search suppliers..."
+            storageKey="suppliers_table"
           />
         </Card>
       ) : (

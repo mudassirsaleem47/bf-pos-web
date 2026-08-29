@@ -75,8 +75,12 @@ const POS = () => {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [cart, setCart] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [productInputValue, setProductInputValue] = useState('');
+  const [productInputValue, setProductInputValue] = useState(() => sessionStorage.getItem('pos_product_search') || '');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    sessionStorage.setItem('pos_product_search', productInputValue);
+  }, [productInputValue]);
   const [quantity, setQuantity] = useState(1);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [shippingAmount, setShippingAmount] = useState('');
@@ -1280,6 +1284,7 @@ const POS = () => {
                       </li>
                     );
                   }}
+                  clearOnBlur={false}
                   value={selectedProduct}
                   open={productDropdownOpen}
                   onOpen={(event) => {
@@ -1303,6 +1308,12 @@ const POS = () => {
                   }}
                   inputValue={productInputValue}
                   onInputChange={(event, newInputValue, reason) => {
+                    if (reason === 'reset') {
+                      // Do not wipe out typed search query when window blurs (e.g. switching to WhatsApp)
+                      if (!selectedProduct && productInputValue) {
+                        return;
+                      }
+                    }
                     // Smart barcode scanning match
                     if (reason === 'input') {
                       const matched = products.find(p => p.barcode && p.barcode.toLowerCase() === newInputValue.toLowerCase().trim());
@@ -1500,6 +1511,7 @@ const POS = () => {
               <Stack spacing={2.5}>
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                   <Autocomplete
+                    clearOnBlur={false}
                     options={customers}
                     getOptionLabel={(option) => `${option.name} ${option.phone ? `(${option.phone})` : ''}`}
                     value={selectedCustomer}
