@@ -16,7 +16,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  IconButton
+  IconButton,
+  Chip
 } from '@mui/material';
 import {
   BarChart as ChartIcon,
