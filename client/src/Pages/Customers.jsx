@@ -21,7 +21,17 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Tooltip
+  Tooltip,
+  Tabs,
+  Tab,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -31,11 +41,360 @@ import {
   Star as StarIcon,
   LocalActivity as PromoIcon,
   AttachMoney as MoneyIcon,
-  AccountBalanceWallet as WalletIcon
+  AccountBalanceWallet as WalletIcon,
+  ReceiptLong as ReceiptIcon,
+  Payments as PaymentIcon,
+  History as HistoryIcon,
+  CheckCircle as CheckCircleIcon,
+  TrendingDown as DebitIcon,
+  TrendingUp as CreditIcon
 } from '@mui/icons-material';
 import DataTable from '../Components/DataTable';
 
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost') ? import.meta.env.VITE_API_URL : window.location.origin);
+
+// Sub-component for rendering full Customer Khaata Ledger
+const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
+  const [activeTab, setActiveTab] = useState(0);
+
+  const sales = customer.sales || [];
+  const payments = customer.payments || [];
+
+  const totalBilled = sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
+  const totalPaid = sales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+  const currentBalance = customer.balance || 0;
+
+  // Build unified chronological ledger entries
+  const ledgerEntries = [];
+
+  // Add all sales as Debit entries
+  for (const sale of sales) {
+    const itemsStr = sale.items && sale.items.length > 0
+      ? sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ')
+      : 'Sale Invoice';
+
+    ledgerEntries.push({
+      id: `sale-${sale.id}`,
+      rawDate: new Date(sale.createdAt),
+      dateStr: new Date(sale.createdAt).toLocaleString(),
+      type: 'SALE',
+      typeLabel: 'Sale Invoice',
+      ref: sale.receiptNo,
+      details: itemsStr,
+      debit: sale.totalAmount,
+      credit: 0,
+      saleObj: sale
+    });
+  }
+
+  // Add all explicit payment records as Credit entries
+  for (const p of payments) {
+    ledgerEntries.push({
+      id: `pay-${p.id}`,
+      rawDate: new Date(p.createdAt),
+      dateStr: new Date(p.createdAt).toLocaleString(),
+      type: 'PAYMENT',
+      typeLabel: 'Payment Received',
+      ref: p.receiptNo ? `Ref: ${p.receiptNo}` : 'Account Payment',
+      details: p.notes ? `${p.paymentMethod || 'Cash'}: ${p.notes}` : (p.paymentMethod || 'Cash Payment'),
+      debit: 0,
+      credit: p.amount,
+      paymentObj: p
+    });
+  }
+
+  // Sort chronological (oldest to newest for running balance calculation)
+  ledgerEntries.sort((a, b) => a.rawDate - b.rawDate);
+
+  // Compute running balance
+  let running = 0;
+  const ledgerWithBalance = ledgerEntries.map(entry => {
+    running = running + (entry.debit || 0) - (entry.credit || 0);
+    return {
+      ...entry,
+      balanceAfter: Math.max(0, running)
+    };
+  });
+
+  // For display, reverse to show newest first
+  const displayTimeline = [...ledgerWithBalance].reverse();
+
+  return (
+    <Box sx={{ p: 2, bgcolor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+      {/* Customer Header Summary inside Ledger */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 2 }}>
+        <Stack direction="row" spacing={3} alignItems="center" flexWrap="wrap">
+          <Box>
+            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block' }}>
+              Total Billed (Udhar / Sales)
+            </Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0f172a' }}>
+              {currency} {totalBilled.toFixed(2)}
+            </Typography>
+          </Box>
+
+          <Divider orientation="vertical" flexItem sx={{ height: 32 }} />
+
+          <Box>
+            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block' }}>
+              Total Paid (Wasooli / Credit)
+            </Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#16a34a' }}>
+              {currency} {totalPaid.toFixed(2)}
+            </Typography>
+          </Box>
+
+          <Divider orientation="vertical" flexItem sx={{ height: 32 }} />
+
+          <Box>
+            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block' }}>
+              Current Khata Balance (Baqaya)
+            </Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, color: currentBalance > 0 ? '#b91c1c' : '#16a34a' }}>
+              {currency} {currentBalance.toFixed(2)}
+            </Typography>
+          </Box>
+        </Stack>
+
+        {currentBalance > 0 && (
+          <Button
+            variant="contained"
+            color="success"
+            size="small"
+            startIcon={<MoneyIcon />}
+            onClick={() => onOpenPayment(customer)}
+            sx={{ borderRadius: 1.5, textTransform: 'none', fontWeight: 600 }}
+          >
+            Receive Payment
+          </Button>
+        )}
+      </Box>
+
+      {/* Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tabs
+          value={activeTab}
+          onChange={(_, val) => setActiveTab(val)}
+          textColor="primary"
+          indicatorColor="primary"
+          sx={{ minHeight: 38 }}
+        >
+          <Tab
+            icon={<HistoryIcon sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+            label={`Ledger History (${displayTimeline.length})`}
+            sx={{ minHeight: 38, py: 0.5, fontSize: '0.85rem', fontWeight: 600, textTransform: 'none' }}
+          />
+          <Tab
+            icon={<ReceiptIcon sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+            label={`Sales Invoices (${sales.length})`}
+            sx={{ minHeight: 38, py: 0.5, fontSize: '0.85rem', fontWeight: 600, textTransform: 'none' }}
+          />
+          <Tab
+            icon={<PaymentIcon sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+            label={`Payments Received (${payments.length})`}
+            sx={{ minHeight: 38, py: 0.5, fontSize: '0.85rem', fontWeight: 600, textTransform: 'none' }}
+          />
+        </Tabs>
+      </Box>
+
+      {/* Tab 0: Full Unified Ledger Timeline */}
+      {activeTab === 0 && (
+        <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: '#fff', borderRadius: 1.5 }}>
+          <Table size="small">
+            <TableHead sx={{ bgcolor: '#f1f5f9' }}>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Date & Time</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Type</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Ref / Invoice</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Particulars / Details</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#b91c1c' }}>Debit (+Billed)</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#15803d' }}>Credit (-Paid)</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#0f172a' }}>Khata Balance</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {displayTimeline.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#64748b', fontStyle: 'italic' }}>
+                    No ledger entries found for this customer.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                displayTimeline.map((item) => {
+                  const isSale = item.type === 'SALE';
+                  return (
+                    <TableRow key={item.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                      <TableCell sx={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                        {item.dateStr}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          icon={isSale ? <DebitIcon sx={{ fontSize: 14 }} /> : <CreditIcon sx={{ fontSize: 14 }} />}
+                          label={isSale ? 'Sale Bill' : 'Payment Received'}
+                          sx={{
+                            fontWeight: 700,
+                            fontSize: '0.72rem',
+                            bgcolor: isSale ? '#fef2f2' : '#f0fdf4',
+                            color: isSale ? '#b91c1c' : '#15803d',
+                            border: `1px solid ${isSale ? '#fecaca' : '#bbf7d0'}`
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>
+                        {item.ref}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.82rem', color: '#475569', maxWidth: 350 }}>
+                        {item.details}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: isSale ? '#b91c1c' : '#94a3b8' }}>
+                        {isSale ? `${currency} ${item.debit.toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: !isSale ? '#15803d' : '#94a3b8' }}>
+                        {!isSale ? `${currency} ${item.credit.toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a' }}>
+                        {currency} {item.balanceAfter.toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {/* Tab 1: Sales Invoices */}
+      {activeTab === 1 && (
+        <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: '#fff', borderRadius: 1.5 }}>
+          <Table size="small">
+            <TableHead sx={{ bgcolor: '#f1f5f9' }}>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Receipt #</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Date & Time</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Items Purchased</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#334155' }}>Total Bill</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#15803d' }}>Paid Amount</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#b91c1c' }}>Due Balance</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700, color: '#334155' }}>Action</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sales.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#64748b', fontStyle: 'italic' }}>
+                    No sales invoices found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                sales.map((sale) => {
+                  const due = Math.max(0, sale.totalAmount - sale.paidAmount);
+                  const isFullyPaid = due <= 0.001;
+                  const itemsStr = sale.items && sale.items.length > 0
+                    ? sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ')
+                    : 'No items recorded';
+
+                  return (
+                    <TableRow key={sale.id} hover>
+                      <TableCell sx={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>
+                        {sale.receiptNo}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                        {new Date(sale.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.82rem', color: '#475569', maxWidth: 350 }}>
+                        {itemsStr}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                        {currency} {sale.totalAmount.toFixed(2)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: sale.paidAmount > 0 ? '#15803d' : '#64748b' }}>
+                        {currency} {sale.paidAmount.toFixed(2)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: due > 0 ? '#b91c1c' : '#15803d' }}>
+                        {due > 0 ? `${currency} ${due.toFixed(2)}` : 'Paid (0.00)'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {due > 0 ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="success"
+                            startIcon={<MoneyIcon sx={{ fontSize: 14 }} />}
+                            onClick={() => onOpenPayment(customer, sale)}
+                            sx={{ fontSize: '0.72rem', py: 0.3, px: 1, textTransform: 'none' }}
+                          >
+                            Pay Due
+                          </Button>
+                        ) : (
+                          <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize: 14 }} />} label="Settled" color="success" variant="outlined" />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {/* Tab 2: Payments History */}
+      {activeTab === 2 && (
+        <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: '#fff', borderRadius: 1.5 }}>
+          <Table size="small">
+            <TableHead sx={{ bgcolor: '#f1f5f9' }}>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Date & Time Received</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Payment Method</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Applied To / Ref</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Notes / Remarks</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#15803d' }}>Amount Received</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {payments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} align="center" sx={{ py: 3, color: '#64748b', fontStyle: 'italic' }}>
+                    No payment receipts logged yet. (Payments made via the &quot;Receive Payment&quot; button will appear here with full date &amp; time).
+                  </TableCell>
+                </TableRow>
+              ) : (
+                payments.map((p) => (
+                  <TableRow key={p.id} hover>
+                    <TableCell sx={{ fontSize: '0.8rem', color: '#1e293b', fontWeight: 600 }}>
+                      {new Date(p.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={p.paymentMethod || 'Cash'}
+                        sx={{ fontSize: '0.72rem', fontWeight: 700, bgcolor: '#f0fdf4', color: '#15803d' }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontSize: '0.82rem', color: '#475569' }}>
+                      {p.receiptNo ? `Receipt ${p.receiptNo}` : 'All Dues (FIFO Allocated)'}
+                    </TableCell>
+                    <TableCell sx={{ fontSize: '0.82rem', color: '#64748b' }}>
+                      {p.notes || '-'}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#15803d' }}>
+                      {currency} {p.amount.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Box>
+  );
+};
 
 const Customers = () => {
   const navigate = useNavigate();
@@ -68,11 +427,22 @@ const Customers = () => {
   const [paymentCustomer, setPaymentCustomer] = useState(null);
   const [selectedReceiptId, setSelectedReceiptId] = useState('ALL');
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
   const handleOpenPayment = (customer, specificSale = null) => {
     setPaymentCustomer(customer);
     setPaymentError('');
+    setPaymentMethod('Cash');
+    setPaymentNotes('');
+    
+    // Set current local datetime formatted for datetime-local input
+    const now = new Date();
+    const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+    setPaymentDate(localIso);
+
     if (specificSale) {
       setSelectedReceiptId(specificSale.id);
       const due = Math.max(0, specificSale.totalAmount - specificSale.paidAmount);
@@ -137,7 +507,10 @@ const Customers = () => {
         },
         body: JSON.stringify({
           amount: amt,
-          receiptId: selectedReceiptId
+          receiptId: selectedReceiptId,
+          paymentMethod,
+          notes: paymentNotes.trim(),
+          date: paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString()
         })
       });
 
@@ -146,7 +519,7 @@ const Customers = () => {
         throw new Error(data.message || 'Failed to update payment');
       }
 
-      setSuccessMsg(`Payment of ${currency}${amt.toFixed(2)} received successfully!`);
+      setSuccessMsg(`Payment of ${currency}${amt.toFixed(2)} received and logged in customer ledger!`);
       setOpenPaymentDialog(false);
       fetchCustomers();
     } catch (err) {
@@ -154,114 +527,6 @@ const Customers = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const renderCustomerHistory = (customer) => {
-    const sales = customer.sales || [];
-
-    if (sales.length === 0) {
-      return (
-        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', pl: 4, py: 1 }}>
-          No sales transactions found.
-        </Typography>
-      );
-    }
-
-    return (
-      <Stack spacing={0.75} sx={{ pl: 2, py: 1 }}>
-        {sales.map((sale) => {
-          const saleDue = Math.max(0, sale.totalAmount - sale.paidAmount);
-          const isFullyPaid = saleDue <= 0.001;
-          const itemsStr = sale.items && sale.items.length > 0 
-            ? sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ')
-            : 'No items recorded';
-
-          return (
-            <Box 
-              key={sale.id} 
-              sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 2, 
-                color: '#475569', 
-                fontSize: '0.85rem',
-                py: 0.5,
-                px: 1,
-                borderRadius: 1,
-                '&:hover': { bgcolor: '#f8fafc' }
-              }}
-            >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                width="14" 
-                height="14" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2.5" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                style={{ color: isFullyPaid ? '#16a34a' : 'rgba(37, 99, 235, 0.6)', flexShrink: 0 }} 
-                aria-hidden="true"
-              >
-                <path d="m15 10 5 5-5 5"></path>
-                <path d="M4 4v7a4 4 0 0 0 4 4h12"></path>
-              </svg>
-              
-              <Typography variant="body2" sx={{ fontWeight: 700, color: '#1e293b', minWidth: 90 }}>
-                {sale.receiptNo}
-              </Typography>
-              
-              <Typography variant="body2" sx={{ color: '#64748b', minWidth: 160 }}>
-                {new Date(sale.createdAt).toLocaleString()}
-              </Typography>
-              
-              <Typography variant="body2" sx={{ color: '#475569', flexGrow: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: 400 }}>
-                {itemsStr}
-              </Typography>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 260, justifyContent: 'flex-end', pr: 1 }}>
-                <Typography variant="body2" sx={{ color: '#475569', fontWeight: 600 }}>
-                  Total: {currency}{sale.totalAmount.toFixed(2)} |{' '}
-                  <span style={{ color: sale.paidAmount > 0 ? '#16a34a' : '#64748b', fontWeight: 700 }}>
-                    Paid: {currency}{sale.paidAmount.toFixed(2)}
-                  </span>
-                  {saleDue > 0 ? (
-                    <span style={{ color: '#ef4444', fontWeight: 700, marginLeft: '8px' }}>
-                      (Due: {currency}{saleDue.toFixed(2)})
-                    </span>
-                  ) : (
-                    <span style={{ color: '#16a34a', fontWeight: 700, marginLeft: '8px' }}>
-                      (Paid)
-                    </span>
-                  )}
-                </Typography>
-
-                {saleDue > 0 && (
-                  <Tooltip title={`Pay for ${sale.receiptNo}`}>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenPayment(customer, sale);
-                      }}
-                      sx={{
-                        color: '#16a34a',
-                        bgcolor: '#f0fdf4',
-                        p: 0.5,
-                        '&:hover': { bgcolor: '#dcfce7', color: '#15803d' }
-                      }}
-                    >
-                      <MoneyIcon sx={{ fontSize: 16 }} />
-                    </IconButton>
-                  </Tooltip>
-                )}
-              </Box>
-            </Box>
-          );
-        })}
-      </Stack>
-    );
   };
 
   const getToken = () => {
@@ -531,7 +796,7 @@ const Customers = () => {
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a' }}>
-          Customer Records
+          Customer Records &amp; Ledger
         </Typography>
         <Button
           variant="contained"
@@ -649,7 +914,13 @@ const Customers = () => {
           bulkActions={bulkActions}
           searchPlaceholder="Search customers..."
           storageKey="customers_table"
-          renderExpandedRow={renderCustomerHistory}
+          renderExpandedRow={(row) => (
+            <CustomerLedgerView
+              customer={row}
+              currency={currency}
+              onOpenPayment={handleOpenPayment}
+            />
+          )}
         />
       </Card>
 
@@ -829,38 +1100,87 @@ const Customers = () => {
                   </Select>
                 </FormControl>
 
-                <Box>
-                  <TextField
-                    label="Amount to Pay"
-                    type="number"
-                    variant="outlined"
-                    required
-                    fullWidth
-                    size="small"
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
-                    slotProps={{
-                      htmlInput: { min: 0.01, step: 0.01 }
-                    }}
-                  />
-                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                    <Button
-                      size="small"
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Amount to Pay"
+                      type="number"
                       variant="outlined"
-                      onClick={() => {
-                        if (selectedReceiptId === 'ALL') {
-                          setPaymentAmount(String(paymentCustomer.balance || 0));
-                        } else {
-                          const target = (paymentCustomer.sales || []).find(s => s.id === selectedReceiptId);
-                          if (target) setPaymentAmount(String(Math.max(0, target.totalAmount - target.paidAmount)));
-                        }
+                      required
+                      fullWidth
+                      size="small"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      slotProps={{
+                        htmlInput: { min: 0.01, step: 0.01 }
                       }}
-                      sx={{ fontSize: '0.75rem', py: 0.2 }}
-                    >
-                      Pay Full Due
-                    </Button>
-                  </Stack>
-                </Box>
+                    />
+                    <Stack direction="row" spacing={1} sx={{ mt: 0.75 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          if (selectedReceiptId === 'ALL') {
+                            setPaymentAmount(String(paymentCustomer.balance || 0));
+                          } else {
+                            const target = (paymentCustomer.sales || []).find(s => s.id === selectedReceiptId);
+                            if (target) setPaymentAmount(String(Math.max(0, target.totalAmount - target.paidAmount)));
+                          }
+                        }}
+                        sx={{ fontSize: '0.72rem', py: 0.2 }}
+                      >
+                        Pay Full Due
+                      </Button>
+                    </Stack>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="payment-method-label">Payment Method</InputLabel>
+                      <Select
+                        labelId="payment-method-label"
+                        value={paymentMethod}
+                        label="Payment Method"
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                      >
+                        <MenuItem value="Cash">Cash (Naqad)</MenuItem>
+                        <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
+                        <MenuItem value="EasyPaisa">EasyPaisa</MenuItem>
+                        <MenuItem value="JazzCash">JazzCash</MenuItem>
+                        <MenuItem value="Card">Debit / Credit Card</MenuItem>
+                        <MenuItem value="Cheque">Cheque</MenuItem>
+                        <MenuItem value="Other">Other</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Payment Date &amp; Time"
+                      type="datetime-local"
+                      variant="outlined"
+                      fullWidth
+                      size="small"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Notes / Reference (Optional)"
+                      placeholder="e.g. Bank slip #, counter ref"
+                      variant="outlined"
+                      fullWidth
+                      size="small"
+                      value={paymentNotes}
+                      onChange={(e) => setPaymentNotes(e.target.value)}
+                    />
+                  </Grid>
+                </Grid>
               </Box>
             )}
           </DialogContent>

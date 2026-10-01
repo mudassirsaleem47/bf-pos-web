@@ -1,4 +1,53 @@
 const prisma = require('../../lib/prisma');
+const crypto = require('crypto');
+
+// Ensure CustomerPayment table exists in Postgres database
+let tableInitialized = false;
+const ensurePaymentTableExists = async () => {
+  if (tableInitialized) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "CustomerPayment" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "customerId" TEXT NOT NULL,
+        "amount" DOUBLE PRECISION NOT NULL,
+        "paymentMethod" TEXT DEFAULT 'Cash',
+        "receiptId" TEXT,
+        "receiptNo" TEXT,
+        "notes" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "CustomerPayment_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+    `);
+    tableInitialized = true;
+  } catch (err) {
+    console.error('CustomerPayment table initialization check:', err.message);
+  }
+};
+
+// Helper to fetch payments for customers
+const getCustomerPayments = async (customerIds, userId) => {
+  if (!customerIds || customerIds.length === 0) return {};
+  try {
+    await ensurePaymentTableExists();
+    const payments = await prisma.$queryRawUnsafe(`
+      SELECT * FROM "CustomerPayment"
+      WHERE "userId" = $1 AND "customerId" = ANY($2::text[])
+      ORDER BY "createdAt" DESC
+    `, userId, customerIds);
+
+    const map = {};
+    for (const p of payments) {
+      if (!map[p.customerId]) map[p.customerId] = [];
+      map[p.customerId].push(p);
+    }
+    return map;
+  } catch (err) {
+    console.error('Error fetching customer payments:', err.message);
+    return {};
+  }
+};
 
 // Helper to allocate payment across customer sales in FIFO order
 const allocatePaymentToSales = async (prismaTx, customerId, userId, amount) => {
@@ -40,6 +89,8 @@ const allocatePaymentToSales = async (prismaTx, customerId, userId, amount) => {
 // @route GET /api/customers
 const getCustomers = async (req, res) => {
   try {
+    await ensurePaymentTableExists();
+
     const customers = await prisma.customer.findMany({
       where: { userId: req.user.id },
       orderBy: { name: 'asc' },
@@ -80,13 +131,18 @@ const getCustomers = async (req, res) => {
         })
       : customers;
 
+    const customerIds = finalCustomers.map(c => c.id);
+    const paymentsMap = await getCustomerPayments(customerIds, req.user.id);
+
     const formatted = finalCustomers.map(c => {
       const totalSpent = (c.sales || []).reduce((sum, s) => sum + (s.totalAmount || 0), 0);
       const visits = (c.sales || []).length;
+      const payments = paymentsMap[c.id] || [];
       return {
         ...c,
         totalSpent,
-        visits
+        visits,
+        payments
       };
     });
 
@@ -101,8 +157,9 @@ const getCustomers = async (req, res) => {
 // @route POST /api/customers/:id/payment
 const receivePayment = async (req, res) => {
   try {
+    await ensurePaymentTableExists();
     const { id } = req.params;
-    const { amount, receiptId } = req.body;
+    const { amount, receiptId, paymentMethod, notes, date } = req.body;
 
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -125,6 +182,7 @@ const receivePayment = async (req, res) => {
     }
 
     const actualPayment = Math.min(parsedAmount, customer.balance);
+    let targetReceiptNo = null;
 
     await prisma.$transaction(async (tx) => {
       if (receiptId && receiptId !== 'ALL') {
@@ -134,6 +192,7 @@ const receivePayment = async (req, res) => {
         if (!sale) {
           throw new Error('Receipt not found for this customer');
         }
+        targetReceiptNo = sale.receiptNo;
         const saleDue = Math.max(0, sale.totalAmount - sale.paidAmount);
         const payToSale = Math.min(actualPayment, saleDue);
         
@@ -161,6 +220,18 @@ const receivePayment = async (req, res) => {
       }
     });
 
+    // Save payment record in CustomerPayment table
+    try {
+      const paymentId = crypto.randomUUID();
+      const paymentDate = date ? new Date(date) : new Date();
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO "CustomerPayment" ("id", "userId", "customerId", "amount", "paymentMethod", "receiptId", "receiptNo", "notes", "createdAt")
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, paymentId, req.user.id, id, actualPayment, paymentMethod || 'Cash', (receiptId && receiptId !== 'ALL') ? receiptId : null, targetReceiptNo, notes || null, paymentDate);
+    } catch (paymentErr) {
+      console.error('Error logging customer payment record:', paymentErr.message);
+    }
+
     const updatedCustomer = await prisma.customer.findFirst({
       where: { id, userId: req.user.id },
       include: {
@@ -171,6 +242,7 @@ const receivePayment = async (req, res) => {
       }
     });
 
+    const paymentsMap = await getCustomerPayments([id], req.user.id);
     const totalSpent = (updatedCustomer.sales || []).reduce((sum, s) => sum + (s.totalAmount || 0), 0);
     const visits = (updatedCustomer.sales || []).length;
 
@@ -178,6 +250,7 @@ const receivePayment = async (req, res) => {
       ...updatedCustomer,
       totalSpent,
       visits,
+      payments: paymentsMap[id] || [],
       message: 'Payment received successfully'
     });
   } catch (error) {
@@ -216,7 +289,8 @@ const createCustomer = async (req, res) => {
     return res.status(201).json({
       ...customer,
       totalSpent: 0,
-      visits: 0
+      visits: 0,
+      payments: []
     });
   } catch (error) {
     console.error('Create customer error:', error);
@@ -280,13 +354,15 @@ const updateCustomer = async (req, res) => {
       }
     });
 
+    const paymentsMap = await getCustomerPayments([id], req.user.id);
     const totalSpent = (customer.sales || []).reduce((sum, s) => sum + (s.totalAmount || 0), 0);
     const visits = (customer.sales || []).length;
 
     return res.status(200).json({
       ...customer,
       totalSpent,
-      visits
+      visits,
+      payments: paymentsMap[id] || []
     });
   } catch (error) {
     console.error('Update customer error:', error);

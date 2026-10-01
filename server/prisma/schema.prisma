@@ -28,6 +28,7 @@ model User {
   loans            Loan[]
   staff            Staff[]
   preOrders        PreOrder[]
+  customerPayments CustomerPayment[]
 }
 
 model Setting {
@@ -208,6 +209,21 @@ model Customer {
   updatedAt     DateTime          @default(now()) @updatedAt
   sales         SaleTransaction[]
   preOrders     PreOrder[]
+  payments      CustomerPayment[]
+}
+
+model CustomerPayment {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentMethod String    @default("Cash")
+  receiptId     String?
+  receiptNo     String?
+  notes         String?
+  createdAt     DateTime  @default(now())
 }
 
 model Expense {
