@@ -17,12 +17,11 @@ import {
   Alert,
   Snackbar,
   TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Tooltip
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -67,14 +66,36 @@ const Customers = () => {
   // Payment Dialog States
   const [openPaymentDialog, setOpenPaymentDialog] = useState(false);
   const [paymentCustomer, setPaymentCustomer] = useState(null);
+  const [selectedReceiptId, setSelectedReceiptId] = useState('ALL');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
-  const handleOpenPayment = (customer) => {
+  const handleOpenPayment = (customer, specificSale = null) => {
     setPaymentCustomer(customer);
-    setPaymentAmount(String(customer.balance || 0));
     setPaymentError('');
+    if (specificSale) {
+      setSelectedReceiptId(specificSale.id);
+      const due = Math.max(0, specificSale.totalAmount - specificSale.paidAmount);
+      setPaymentAmount(String(due > 0 ? due : 0));
+    } else {
+      setSelectedReceiptId('ALL');
+      setPaymentAmount(String(customer.balance || 0));
+    }
     setOpenPaymentDialog(true);
+  };
+
+  const handleReceiptSelectionChange = (receiptId) => {
+    setSelectedReceiptId(receiptId);
+    if (!paymentCustomer) return;
+    if (receiptId === 'ALL') {
+      setPaymentAmount(String(paymentCustomer.balance || 0));
+    } else {
+      const target = (paymentCustomer.sales || []).find(s => s.id === receiptId);
+      if (target) {
+        const due = Math.max(0, target.totalAmount - target.paidAmount);
+        setPaymentAmount(String(due));
+      }
+    }
   };
 
   const handlePaymentSubmit = async (e) => {
@@ -87,9 +108,20 @@ const Customers = () => {
       return;
     }
 
-    if (amt > paymentCustomer.balance) {
-      setPaymentError(`Payment amount cannot exceed the owed balance of ${currency}${paymentCustomer.balance.toFixed(2)}.`);
+    if (amt > (paymentCustomer.balance || 0) + 0.01) {
+      setPaymentError(`Payment amount cannot exceed the owed balance of ${currency}${(paymentCustomer.balance || 0).toFixed(2)}.`);
       return;
+    }
+
+    if (selectedReceiptId !== 'ALL') {
+      const target = (paymentCustomer.sales || []).find(s => s.id === selectedReceiptId);
+      if (target) {
+        const due = Math.max(0, target.totalAmount - target.paidAmount);
+        if (amt > due + 0.01) {
+          setPaymentError(`Payment amount cannot exceed the receipt due of ${currency}${due.toFixed(2)}.`);
+          return;
+        }
+      }
     }
 
     const token = getToken();
@@ -97,15 +129,15 @@ const Customers = () => {
 
     setLoading(true);
     try {
-      const newBalance = Math.max(0, paymentCustomer.balance - amt);
-      const response = await fetch(`${API_URL}/api/customers/${paymentCustomer.id}`, {
-        method: 'PUT',
+      const response = await fetch(`${API_URL}/api/customers/${paymentCustomer.id}/payment`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          balance: newBalance
+          amount: amt,
+          receiptId: selectedReceiptId
         })
       });
 
@@ -136,12 +168,29 @@ const Customers = () => {
     }
 
     return (
-      <Stack spacing={0.5} sx={{ pl: 2, py: 0.5 }}>
+      <Stack spacing={0.75} sx={{ pl: 2, py: 1 }}>
         {sales.map((sale) => {
           const saleDue = Math.max(0, sale.totalAmount - sale.paidAmount);
-          const itemsStr = sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
+          const isFullyPaid = saleDue <= 0.001;
+          const itemsStr = sale.items && sale.items.length > 0 
+            ? sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ')
+            : 'No items recorded';
+
           return (
-            <Box key={sale.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, color: '#475569', fontSize: '0.85rem' }}>
+            <Box 
+              key={sale.id} 
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 2, 
+                color: '#475569', 
+                fontSize: '0.85rem',
+                py: 0.5,
+                px: 1,
+                borderRadius: 1,
+                '&:hover': { bgcolor: '#f8fafc' }
+              }}
+            >
               <svg 
                 xmlns="http://www.w3.org/2000/svg" 
                 width="14" 
@@ -152,7 +201,7 @@ const Customers = () => {
                 strokeWidth="2.5" 
                 strokeLinecap="round" 
                 strokeLinejoin="round" 
-                style={{ color: 'rgba(37, 99, 235, 0.6)', flexShrink: 0 }} 
+                style={{ color: isFullyPaid ? '#16a34a' : 'rgba(37, 99, 235, 0.6)', flexShrink: 0 }} 
                 aria-hidden="true"
               >
                 <path d="m15 10 5 5-5 5"></path>
@@ -171,14 +220,43 @@ const Customers = () => {
                 {itemsStr}
               </Typography>
 
-              <Typography variant="body2" sx={{ color: '#475569', fontWeight: 600, minWidth: 220, textAlign: 'right', pr: 2 }}>
-                Total: {currency}{sale.totalAmount.toFixed(2)} | Paid: {currency}{sale.paidAmount.toFixed(2)}
-                {saleDue > 0 && (
-                  <span style={{ color: '#ef4444', fontWeight: 700, marginLeft: '8px' }}>
-                    (Due: {currency}{saleDue.toFixed(2)})
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 260, justifyContent: 'flex-end', pr: 1 }}>
+                <Typography variant="body2" sx={{ color: '#475569', fontWeight: 600 }}>
+                  Total: {currency}{sale.totalAmount.toFixed(2)} |{' '}
+                  <span style={{ color: sale.paidAmount > 0 ? '#16a34a' : '#64748b', fontWeight: 700 }}>
+                    Paid: {currency}{sale.paidAmount.toFixed(2)}
                   </span>
+                  {saleDue > 0 ? (
+                    <span style={{ color: '#ef4444', fontWeight: 700, marginLeft: '8px' }}>
+                      (Due: {currency}{saleDue.toFixed(2)})
+                    </span>
+                  ) : (
+                    <span style={{ color: '#16a34a', fontWeight: 700, marginLeft: '8px' }}>
+                      (Paid)
+                    </span>
+                  )}
+                </Typography>
+
+                {saleDue > 0 && (
+                  <Tooltip title={`Pay for ${sale.receiptNo}`}>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenPayment(customer, sale);
+                      }}
+                      sx={{
+                        color: '#16a34a',
+                        bgcolor: '#f0fdf4',
+                        p: 0.5,
+                        '&:hover': { bgcolor: '#dcfce7', color: '#15803d' }
+                      }}
+                    >
+                      <MoneyIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
                 )}
-              </Typography>
+              </Box>
             </Box>
           );
         })}
@@ -403,14 +481,19 @@ const Customers = () => {
       sortable: true,
       render: (row) => `${currency} ${(row.totalSpent || 0).toFixed(2)}`
     },
-    { id: 'visits', label: 'Visits', sortable: true },
+    { 
+      id: 'visits', 
+      label: 'Visits', 
+      sortable: true,
+      render: (row) => row.visits !== undefined ? row.visits : (row.sales?.length || 0)
+    },
     {
       id: 'actions',
       label: 'Actions',
       sortable: false,
       render: (row) => (
         <Stack direction="row" spacing={0.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
-          {row.balance > 0 && (
+          {(row.balance || 0) > 0 && (
             <IconButton
               onClick={() => handleOpenPayment(row)}
               size="small"
@@ -700,38 +783,84 @@ const Customers = () => {
       <Dialog
         open={openPaymentDialog}
         onClose={() => setOpenPaymentDialog(false)}
-        maxWidth="xs"
+        maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
       >
-        <DialogTitle sx={{ fontWeight: 700, pb: 1, color: '#16a34a' }}>
-          Receive Payment
+        <DialogTitle sx={{ fontWeight: 700, pb: 1, color: '#16a34a', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <MoneyIcon /> Receive Customer Payment
         </DialogTitle>
         <Divider sx={{ mx: 3 }} />
         <form onSubmit={handlePaymentSubmit}>
           <DialogContent sx={{ py: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
             {paymentError && <Alert severity="error">{paymentError}</Alert>}
             {paymentCustomer && (
-              <Box>
-                <Typography variant="body2" sx={{ color: '#475569', mb: 1 }}>
-                  Customer Name: <strong>{paymentCustomer.name}</strong>
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#475569', mb: 2 }}>
-                  Current Owed Balance: <strong>{currency}{paymentCustomer.balance.toFixed(2)}</strong>
-                </Typography>
-                <TextField
-                  label="Amount to Pay"
-                  type="number"
-                  variant="standard"
-                  required
-                  fullWidth
-                  size="small"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  slotProps={{
-                    htmlInput: { min: 0.01, step: 0.01 }
-                  }}
-                />
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ bgcolor: '#f8fafc', p: 2, borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
+                  <Typography variant="body2" sx={{ color: '#475569', mb: 0.5 }}>
+                    Customer Name: <strong style={{ color: '#0f172a' }}>{paymentCustomer.name}</strong>
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#475569' }}>
+                    Total Owed Balance: <strong style={{ color: '#dc2626' }}>{currency}{(paymentCustomer.balance || 0).toFixed(2)}</strong>
+                  </Typography>
+                </Box>
+
+                <FormControl fullWidth size="small">
+                  <InputLabel id="payment-target-label">Apply Payment To</InputLabel>
+                  <Select
+                    labelId="payment-target-label"
+                    value={selectedReceiptId}
+                    label="Apply Payment To"
+                    onChange={(e) => handleReceiptSelectionChange(e.target.value)}
+                  >
+                    <MenuItem value="ALL">
+                      <em>All Outstanding Balance (Auto-allocate FIFO from oldest)</em>
+                    </MenuItem>
+                    {(paymentCustomer.sales || [])
+                      .filter(s => (s.totalAmount - s.paidAmount) > 0.001)
+                      .map(s => {
+                        const due = s.totalAmount - s.paidAmount;
+                        return (
+                          <MenuItem key={s.id} value={s.id}>
+                            Receipt {s.receiptNo} — Due: {currency}{due.toFixed(2)} (Total: {currency}{s.totalAmount.toFixed(2)})
+                          </MenuItem>
+                        );
+                      })}
+                  </Select>
+                </FormControl>
+
+                <Box>
+                  <TextField
+                    label="Amount to Pay"
+                    type="number"
+                    variant="outlined"
+                    required
+                    fullWidth
+                    size="small"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    slotProps={{
+                      htmlInput: { min: 0.01, step: 0.01 }
+                    }}
+                  />
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        if (selectedReceiptId === 'ALL') {
+                          setPaymentAmount(String(paymentCustomer.balance || 0));
+                        } else {
+                          const target = (paymentCustomer.sales || []).find(s => s.id === selectedReceiptId);
+                          if (target) setPaymentAmount(String(Math.max(0, target.totalAmount - target.paidAmount)));
+                        }
+                      }}
+                      sx={{ fontSize: '0.75rem', py: 0.2 }}
+                    >
+                      Pay Full Due
+                    </Button>
+                  </Stack>
+                </Box>
               </Box>
             )}
           </DialogContent>
@@ -748,9 +877,10 @@ const Customers = () => {
               type="submit"
               variant="contained"
               color="success"
+              disabled={loading}
               sx={{ borderRadius: 1.5 }}
             >
-              Receive Payment
+              {loading ? 'Processing...' : `Receive Payment (${currency}${parseFloat(paymentAmount || 0).toFixed(2)})`}
             </Button>
           </DialogActions>
         </form>
