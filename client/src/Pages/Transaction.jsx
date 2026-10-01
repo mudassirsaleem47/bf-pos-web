@@ -156,7 +156,7 @@ const Transaction = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to delete sale transaction(s)');
 
-      setSuccessMsg('Voided selected transaction(s) successfully!');
+      setSuccessMsg(data.message || 'Voided selected transaction(s) and restored inventory stock successfully!');
       fetchSales();
       setOpenDeleteDialog(false);
       setSelected([]);

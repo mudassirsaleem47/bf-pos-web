@@ -138,7 +138,7 @@ const createSale = async (req, res) => {
   }
 };
 
-// @desc  Bulk delete sales
+// @desc  Bulk delete sales (void transactions, restore product stock & adjust customer balances)
 // @route DELETE /api/sales
 const deleteSales = async (req, res) => {
   try {
@@ -146,13 +146,71 @@ const deleteSales = async (req, res) => {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ message: 'Sale IDs are required' });
     }
-    await prisma.saleTransaction.deleteMany({
+
+    // 1. Fetch sales with items to know which products and quantities to restore
+    const salesToDelete = await prisma.saleTransaction.findMany({
       where: {
         id: { in: ids },
         userId: req.user.id
+      },
+      include: {
+        items: true
       }
     });
-    return res.status(200).json({ message: 'Sales deleted successfully' });
+
+    if (salesToDelete.length === 0) {
+      return res.status(404).json({ message: 'No matching sales found to delete' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const sale of salesToDelete) {
+        // 1. Restore product stock quantities
+        for (const item of sale.items) {
+          if (item.productId) {
+            const product = await tx.product.findFirst({
+              where: { id: item.productId, userId: req.user.id }
+            });
+            if (product) {
+              const qty = parseFloat(item.quantity) || 0;
+              await tx.product.update({
+                where: { id: item.productId },
+                data: {
+                  stock: {
+                    increment: qty
+                  }
+                }
+              });
+            }
+          }
+        }
+
+        // 2. Adjust customer balance if this was a credit sale with unpaid due
+        if (sale.customerId) {
+          const dueAmount = Math.max(0, (sale.totalAmount || 0) - (sale.paidAmount || 0));
+          if (dueAmount > 0.001) {
+            const customer = await tx.customer.findFirst({
+              where: { id: sale.customerId, userId: req.user.id }
+            });
+            if (customer) {
+              const newBalance = Math.max(0, (customer.balance || 0) - dueAmount);
+              await tx.customer.update({
+                where: { id: sale.customerId },
+                data: { balance: newBalance }
+              });
+            }
+          }
+        }
+
+        // 3. Delete the sale transaction (items will cascade delete)
+        await tx.saleTransaction.delete({
+          where: { id: sale.id }
+        });
+      }
+    });
+
+    return res.status(200).json({ 
+      message: `${salesToDelete.length} sale transaction(s) deleted and product stock restored successfully.` 
+    });
   } catch (error) {
     console.error('Delete sales error:', error);
     return res.status(500).json({ message: 'Server error deleting sales' });
