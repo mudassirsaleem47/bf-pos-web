@@ -1,11 +1,41 @@
 const prisma = require('../../lib/prisma');
 
-// Generate receipt number scoped to the user
+// Generate unique receipt number scoped to the user (handles deleted sales and collisions)
 const generateReceiptNo = async (userId) => {
-  const count = await prisma.saleTransaction.count({
-    where: { userId }
+  const lastSales = await prisma.saleTransaction.findMany({
+    where: { userId },
+    select: { receiptNo: true }
   });
-  return `R-${String(count + 1).padStart(4, '0')}`;
+
+  let maxNum = 0;
+  for (const s of lastSales) {
+    if (s.receiptNo) {
+      const match = s.receiptNo.match(/\d+$/);
+      if (match) {
+        const num = parseInt(match[0], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+  }
+
+  let nextNum = maxNum + 1;
+  while (true) {
+    const candidate = `R-${String(nextNum).padStart(4, '0')}`;
+    const exists = await prisma.saleTransaction.findUnique({
+      where: {
+        userId_receiptNo: {
+          userId,
+          receiptNo: candidate
+        }
+      }
+    });
+    if (!exists) {
+      return candidate;
+    }
+    nextNum++;
+  }
 };
 
 // @desc  Get all sales
@@ -75,66 +105,71 @@ const createSale = async (req, res) => {
       }
     }
 
-    // 1. Create Sale Transaction
-    const sale = await prisma.saleTransaction.create({
-      data: {
-        receiptNo,
-        orderNo: orderNo ? String(orderNo).trim() : null,
-        notes: notes ? String(notes).trim() : null,
-        totalAmount: total,
-        paidAmount: paid,
-        change,
-        discount: parseFloat(discount) || 0,
-        tax: parseFloat(tax) || 0,
-        shipping: parseFloat(shipping) || 0,
-        customerId: customerId || null,
-        userId: req.user.id,
-        items: {
-          create: items.map(item => ({
-            productId: item.productId || null,
-            name: item.name,
-            barcode: item.barcode || null,
-            quantity: parseFloat(item.quantity),
-            price: parseFloat(item.price),
-            discount: parseFloat(item.discount) || 0,
-            total: parseFloat(item.total),
-          }))
-        }
-      },
-      include: { items: true, customer: true }
-    });
+    // Atomic transaction for sale creation, stock decrement, and customer khata update
+    const sale = await prisma.$transaction(async (tx) => {
+      // 1. Create Sale Transaction
+      const newSale = await tx.saleTransaction.create({
+        data: {
+          receiptNo,
+          orderNo: orderNo ? String(orderNo).trim() : null,
+          notes: notes ? String(notes).trim() : null,
+          totalAmount: total,
+          paidAmount: paid,
+          change,
+          discount: parseFloat(discount) || 0,
+          tax: parseFloat(tax) || 0,
+          shipping: parseFloat(shipping) || 0,
+          customerId: customerId || null,
+          userId: req.user.id,
+          items: {
+            create: items.map(item => ({
+              productId: item.productId || null,
+              name: item.name,
+              barcode: item.barcode || null,
+              quantity: parseFloat(item.quantity) || 0,
+              price: parseFloat(item.price) || 0,
+              discount: parseFloat(item.discount) || 0,
+              total: parseFloat(item.total) || 0,
+            }))
+          }
+        },
+        include: { items: true, customer: true }
+      });
 
-    // 2. Adjust Product Stock
-    for (const item of items) {
-      if (item.productId) {
-        await prisma.product.update({
-          where: { id: item.productId },
+      // 2. Adjust Product Stock
+      for (const item of items) {
+        if (item.productId) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: {
+                decrement: parseFloat(item.quantity) || 0
+              }
+            }
+          });
+        }
+      }
+
+      // 3. Update Customer balance if it is a credit sale
+      if (customerId && total > paid) {
+        const creditAmount = total - paid;
+        await tx.customer.update({
+          where: { id: customerId },
           data: {
-            stock: {
-              decrement: parseFloat(item.quantity)
+            balance: {
+              increment: creditAmount
             }
           }
         });
       }
-    }
 
-    // 3. Update Customer balance if it is a credit sale
-    if (customerId && total > paid) {
-      const creditAmount = total - paid;
-      await prisma.customer.update({
-        where: { id: customerId },
-        data: {
-          balance: {
-            increment: creditAmount
-          }
-        }
-      });
-    }
+      return newSale;
+    });
 
     return res.status(201).json(sale);
   } catch (error) {
     console.error('Create sale error:', error);
-    return res.status(500).json({ message: 'Server error creating sale' });
+    return res.status(500).json({ message: error.message || 'Server error creating sale' });
   }
 };
 

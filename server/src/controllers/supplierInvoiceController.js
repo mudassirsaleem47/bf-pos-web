@@ -2,12 +2,42 @@ const prisma = require('../../lib/prisma');
 const path = require('path');
 const fs = require('fs');
 
-// Generate unique invoice number scoped to user
+// Generate unique invoice number scoped to user (handles deletions & prevents collision)
 const generateInvoiceNo = async (userId) => {
-  const count = await prisma.supplierInvoice.count({
-    where: { userId }
+  const lastInvoices = await prisma.supplierInvoice.findMany({
+    where: { userId },
+    select: { invoiceNo: true }
   });
-  return `SINV-${String(count + 1).padStart(4, '0')}`;
+
+  let maxNum = 0;
+  for (const inv of lastInvoices) {
+    if (inv.invoiceNo) {
+      const match = inv.invoiceNo.match(/\d+$/);
+      if (match) {
+        const num = parseInt(match[0], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+  }
+
+  let nextNum = maxNum + 1;
+  while (true) {
+    const candidate = `SINV-${String(nextNum).padStart(4, '0')}`;
+    const exists = await prisma.supplierInvoice.findUnique({
+      where: {
+        userId_invoiceNo: {
+          userId,
+          invoiceNo: candidate
+        }
+      }
+    });
+    if (!exists) {
+      return candidate;
+    }
+    nextNum++;
+  }
 };
 
 // @desc  Get all supplier invoices

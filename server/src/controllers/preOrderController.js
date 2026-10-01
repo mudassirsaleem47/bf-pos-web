@@ -1,11 +1,41 @@
 const prisma = require('../../lib/prisma');
 
-// Auto-generate Pre-Order number scoped to user (e.g. PO-0001)
+// Auto-generate Pre-Order number scoped to user (handles deletions & prevents collision)
 const generateOrderNo = async (userId) => {
-  const count = await prisma.preOrder.count({
-    where: { userId }
+  const lastOrders = await prisma.preOrder.findMany({
+    where: { userId },
+    select: { orderNo: true }
   });
-  return `PO-${String(count + 1).padStart(4, '0')}`;
+
+  let maxNum = 0;
+  for (const ord of lastOrders) {
+    if (ord.orderNo) {
+      const match = ord.orderNo.match(/\d+$/);
+      if (match) {
+        const num = parseInt(match[0], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+  }
+
+  let nextNum = maxNum + 1;
+  while (true) {
+    const candidate = `PO-${String(nextNum).padStart(4, '0')}`;
+    const exists = await prisma.preOrder.findUnique({
+      where: {
+        userId_orderNo: {
+          userId,
+          orderNo: candidate
+        }
+      }
+    });
+    if (!exists) {
+      return candidate;
+    }
+    nextNum++;
+  }
 };
 
 // @desc  Get all pre-orders
