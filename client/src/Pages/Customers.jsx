@@ -58,16 +58,43 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
   const [activeTab, setActiveTab] = useState(0);
 
   const sales = customer.sales || [];
-  const payments = customer.payments || [];
+  const explicitPayments = customer.payments || [];
 
   const totalBilled = sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
   const totalPaid = sales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
   const currentBalance = customer.balance || 0;
 
+  // Build comprehensive list of all payments (both explicit CustomerPayment records + checkout / settled payments on sales)
+  const allPaymentRecords = [...explicitPayments];
+  const explicitLinkedSaleIds = new Set(
+    explicitPayments.filter(p => p.receiptId).map(p => p.receiptId)
+  );
+
+  // If explicit payments total is less than totalPaid across sales, include the checkout/settled payments
+  const explicitTotal = explicitPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  if (explicitTotal < totalPaid - 0.01) {
+    for (const sale of sales) {
+      if ((sale.paidAmount || 0) > 0.001 && !explicitLinkedSaleIds.has(sale.id)) {
+        allPaymentRecords.push({
+          id: `checkout-pay-${sale.id}`,
+          createdAt: sale.createdAt,
+          amount: sale.paidAmount,
+          paymentMethod: 'Cash (Checkout / Settlement)',
+          receiptId: sale.id,
+          receiptNo: sale.receiptNo,
+          notes: `Paid at sale checkout / settlement for ${sale.receiptNo}`
+        });
+      }
+    }
+  }
+
+  // Sort payments newest first for the Payments tab
+  allPaymentRecords.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
   // Build unified chronological ledger entries
   const ledgerEntries = [];
 
-  // Add all sales as Debit entries
+  // 1. Add all sales as Debit entries
   for (const sale of sales) {
     const itemsStr = sale.items && sale.items.length > 0
       ? sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ')
@@ -87,8 +114,8 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
     });
   }
 
-  // Add all explicit payment records as Credit entries
-  for (const p of payments) {
+  // 2. Add all payment records as Credit entries
+  for (const p of allPaymentRecords) {
     ledgerEntries.push({
       id: `pay-${p.id}`,
       rawDate: new Date(p.createdAt),
@@ -103,7 +130,7 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
     });
   }
 
-  // Sort chronological (oldest to newest for running balance calculation)
+  // Sort chronological (oldest to newest for accurate running balance calculation)
   ledgerEntries.sort((a, b) => a.rawDate - b.rawDate);
 
   // Compute running balance
@@ -194,7 +221,7 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
           <Tab
             icon={<PaymentIcon sx={{ fontSize: 18 }} />}
             iconPosition="start"
-            label={`Payments Received (${payments.length})`}
+            label={`Payments Received (${allPaymentRecords.length})`}
             sx={{ minHeight: 38, py: 0.5, fontSize: '0.85rem', fontWeight: 600, textTransform: 'none' }}
           />
         </Tabs>
@@ -357,16 +384,16 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {payments.length === 0 ? (
+              {allPaymentRecords.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} align="center" sx={{ py: 3, color: '#64748b', fontStyle: 'italic' }}>
-                    No payment receipts logged yet. (Payments made via the &quot;Receive Payment&quot; button will appear here with full date &amp; time).
+                    No payment records found for this customer.
                   </TableCell>
                 </TableRow>
               ) : (
-                payments.map((p) => (
+                allPaymentRecords.map((p) => (
                   <TableRow key={p.id} hover>
-                    <TableCell sx={{ fontSize: '0.8rem', color: '#1e293b', fontWeight: 600 }}>
+                    <TableCell sx={{ fontSize: '0.8rem', color: '#1e293b', fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {new Date(p.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell>
