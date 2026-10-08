@@ -23,7 +23,14 @@ import {
   Chip,
   IconButton,
   Alert,
-  Snackbar
+  Snackbar,
+  TextField,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  FormControl,
+  FormLabel,
+  Tooltip
 } from '@mui/material';
 import {
   ReceiptLong as ReceiptIcon,
@@ -33,7 +40,10 @@ import {
   Delete as DeleteIcon,
   Visibility as VisibilityIcon,
   Print as PrintIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
+  AssignmentReturn as ReturnIcon,
+  Add as AddIcon,
+  Remove as RemoveIcon
 } from '@mui/icons-material';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -68,6 +78,96 @@ const Transaction = () => {
   // Delete dialog states
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [deleteIds, setDeleteIds] = useState([]);
+
+  // Return Dialog states
+  const [openReturnDialog, setOpenReturnDialog] = useState(false);
+  const [returnSale, setReturnSale] = useState(null);
+  const [returnQtys, setReturnQtys] = useState({});
+  const [refundMethod, setRefundMethod] = useState('cash');
+  const [returnNotes, setReturnNotes] = useState('');
+  const [returning, setReturning] = useState(false);
+
+  const handleOpenReturn = (sale) => {
+    const initialQtys = {};
+    (sale.items || []).forEach(item => {
+      initialQtys[item.id] = 0;
+    });
+    setReturnSale(sale);
+    setReturnQtys(initialQtys);
+    setRefundMethod(sale.customerId ? 'credit' : 'cash');
+    setReturnNotes('');
+    setOpenReturnDialog(true);
+  };
+
+  const handleReturnQtyChange = (itemId, val, maxQty) => {
+    const num = Math.max(0, Math.min(maxQty, parseFloat(val) || 0));
+    setReturnQtys(prev => ({
+      ...prev,
+      [itemId]: num
+    }));
+  };
+
+  const calculateTotalRefund = () => {
+    if (!returnSale || !returnSale.items) return 0;
+    return returnSale.items.reduce((sum, item) => {
+      const q = returnQtys[item.id] || 0;
+      const unitPrice = item.quantity > 0 ? (item.total / item.quantity) : item.price;
+      return sum + (unitPrice * q);
+    }, 0);
+  };
+
+  const calculateTotalReturnItemsCount = () => {
+    if (!returnSale || !returnSale.items) return 0;
+    return returnSale.items.reduce((sum, item) => sum + (returnQtys[item.id] || 0), 0);
+  };
+
+  const handleProcessReturn = async () => {
+    const itemsToReturn = Object.entries(returnQtys)
+      .filter(([_, qty]) => qty > 0)
+      .map(([saleItemId, returnQuantity]) => ({
+        saleItemId,
+        returnQuantity
+      }));
+
+    if (itemsToReturn.length === 0) {
+      setError('Please select at least 1 item quantity to return.');
+      return;
+    }
+
+    setReturning(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const token = getToken();
+      if (!token) return;
+
+      const res = await fetch(`${API_URL}/api/sales/${returnSale.id}/return`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          returnedItems: itemsToReturn,
+          refundMethod,
+          notes: returnNotes
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to process return');
+
+      setSuccessMsg(data.message || 'Return processed successfully and inventory stock restored!');
+      setOpenReturnDialog(false);
+      setOpenViewDialog(false);
+      setReturnSale(null);
+      fetchSales();
+    } catch (err) {
+      setError(err.message || 'Return operation failed');
+    } finally {
+      setReturning(false);
+    }
+  };
 
   const getToken = () => {
     const token = localStorage.getItem('token');
@@ -368,20 +468,33 @@ const Transaction = () => {
       sortable: false,
       render: (row) => (
         <Stack direction="row" spacing={0.5}>
-          <IconButton
-            onClick={(e) => { e.stopPropagation(); setActiveSale(row); setOpenViewDialog(true); }}
-            size="small"
-            sx={{ color: '#64748b', '&:hover': { color: '#2563eb' } }}
-          >
-            <VisibilityIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-          <IconButton
-            onClick={(e) => { e.stopPropagation(); handlePrintReceipt(row); }}
-            size="small"
-            sx={{ color: '#64748b', '&:hover': { color: '#059669' } }}
-          >
-            <PrintIcon sx={{ fontSize: 18 }} />
-          </IconButton>
+          <Tooltip title="View Receipt">
+            <IconButton
+              onClick={(e) => { e.stopPropagation(); setActiveSale(row); setOpenViewDialog(true); }}
+              size="small"
+              sx={{ color: '#64748b', '&:hover': { color: '#2563eb' } }}
+            >
+              <VisibilityIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Return / Refund Items">
+            <IconButton
+              onClick={(e) => { e.stopPropagation(); handleOpenReturn(row); }}
+              size="small"
+              sx={{ color: '#64748b', '&:hover': { color: '#f59e0b', bgcolor: '#fffbeb' } }}
+            >
+              <ReturnIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Print PDF">
+            <IconButton
+              onClick={(e) => { e.stopPropagation(); handlePrintReceipt(row); }}
+              size="small"
+              sx={{ color: '#64748b', '&:hover': { color: '#059669' } }}
+            >
+              <PrintIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
         </Stack>
       )
     }
@@ -523,15 +636,31 @@ const Transaction = () => {
                   sx={{ ml: 1, bgcolor: '#eff6ff', color: '#2563eb', fontWeight: 700 }}
                 />
               </Box>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<PrintIcon />}
-                onClick={() => handlePrintReceipt(activeSale)}
-                sx={{ borderRadius: 1.5 }}
-              >
-                Print PDF
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  size="small"
+                  startIcon={<ReturnIcon />}
+                  onClick={() => {
+                    const saleToReturn = activeSale;
+                    setOpenViewDialog(false);
+                    handleOpenReturn(saleToReturn);
+                  }}
+                  sx={{ borderRadius: 1.5, fontWeight: 600 }}
+                >
+                  Return Items
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<PrintIcon />}
+                  onClick={() => handlePrintReceipt(activeSale)}
+                  sx={{ borderRadius: 1.5 }}
+                >
+                  Print PDF
+                </Button>
+              </Stack>
             </DialogTitle>
             <Divider sx={{ mx: 3 }} />
             <DialogContent sx={{ py: 3 }}>
@@ -691,6 +820,211 @@ const Transaction = () => {
             {loading ? 'Voiding...' : 'Void Transaction(s)'}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Return / Refund Order Items Dialog */}
+      <Dialog
+        open={openReturnDialog}
+        onClose={() => { if (!returning) { setOpenReturnDialog(false); setReturnSale(null); } }}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
+      >
+        {returnSale && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700, pb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box sx={{ p: 1, bgcolor: '#fffbeb', color: '#d97706', borderRadius: 1.5, display: 'flex' }}>
+                  <ReturnIcon />
+                </Box>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
+                    Return / Refund Items
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Receipt #{returnSale.receiptNo} {returnSale.orderNo ? `• Order #${returnSale.orderNo}` : ''} {returnSale.customer ? `• Customer: ${returnSale.customer.name}` : ''}
+                  </Typography>
+                </Box>
+              </Box>
+              <Chip
+                label={`${calculateTotalReturnItemsCount()} item(s) selected`}
+                color={calculateTotalReturnItemsCount() > 0 ? "warning" : "default"}
+                size="small"
+                sx={{ fontWeight: 700 }}
+              />
+            </DialogTitle>
+            <Divider sx={{ mx: 3 }} />
+            <DialogContent sx={{ py: 2.5 }}>
+              <Alert severity="info" sx={{ mb: 2.5, borderRadius: 1.5, fontSize: '0.85rem' }}>
+                Enter the quantity to return for any item. The system will automatically restore the returned items back into your inventory stock and calculate the refund.
+              </Alert>
+
+              {/* Items Table */}
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5, mb: 3 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                      <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Product Name</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#475569' }} align="center">Purchased Qty</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#475569' }} align="right">Unit Price</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#475569', minWidth: 150 }} align="center">Return Qty</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: '#475569' }} align="right">Refund Amount</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {returnSale.items.map((it) => {
+                      const returnQty = returnQtys[it.id] || 0;
+                      const unitPrice = it.quantity > 0 ? (it.total / it.quantity) : it.price;
+                      const refundForThisItem = unitPrice * returnQty;
+                      const isReturned = returnQty > 0;
+
+                      return (
+                        <TableRow key={it.id} sx={{ bgcolor: isReturned ? '#fffbeb' : 'inherit' }}>
+                          <TableCell sx={{ fontWeight: 600 }}>
+                            {it.name}
+                            {it.barcode && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                Barcode: {it.barcode}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip label={it.quantity} size="small" sx={{ fontWeight: 700 }} />
+                          </TableCell>
+                          <TableCell align="right">
+                            {storeSettings.currency} {unitPrice.toFixed(2)}
+                          </TableCell>
+                          <TableCell align="center">
+                            <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="center">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleReturnQtyChange(it.id, returnQty - 1, it.quantity)}
+                                disabled={returnQty <= 0}
+                                sx={{ border: '1px solid #cbd5e1', p: 0.5 }}
+                              >
+                                <RemoveIcon sx={{ fontSize: 14 }} />
+                              </IconButton>
+                              <TextField
+                                type="number"
+                                size="small"
+                                value={returnQty === 0 ? '' : returnQty}
+                                placeholder="0"
+                                onChange={(e) => handleReturnQtyChange(it.id, e.target.value, it.quantity)}
+                                inputProps={{ min: 0, max: it.quantity, style: { textAlign: 'center', width: '50px', padding: '4px 6px', fontWeight: 700 } }}
+                                sx={{ width: '65px' }}
+                              />
+                              <IconButton
+                                size="small"
+                                onClick={() => handleReturnQtyChange(it.id, returnQty + 1, it.quantity)}
+                                disabled={returnQty >= it.quantity}
+                                sx={{ border: '1px solid #cbd5e1', p: 0.5 }}
+                              >
+                                <AddIcon sx={{ fontSize: 14 }} />
+                              </IconButton>
+                              <Button
+                                size="small"
+                                variant="text"
+                                onClick={() => handleReturnQtyChange(it.id, it.quantity, it.quantity)}
+                                sx={{ fontSize: '0.7rem', minWidth: 'auto', p: '2px 6px', color: '#64748b' }}
+                              >
+                                All
+                              </Button>
+                            </Stack>
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, color: isReturned ? '#d97706' : '#64748b' }}>
+                            {storeSettings.currency} {refundForThisItem.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {/* Summary and Refund Options */}
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <FormControl component="fieldset" fullWidth sx={{ mb: 2 }}>
+                    <FormLabel component="legend" sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a', mb: 0.5 }}>
+                      Refund Method
+                    </FormLabel>
+                    <RadioGroup
+                      row
+                      value={refundMethod}
+                      onChange={(e) => setRefundMethod(e.target.value)}
+                    >
+                      <FormControlLabel
+                        value="cash"
+                        control={<Radio size="small" color="primary" />}
+                        label={<Typography variant="body2">💵 Cash Refund</Typography>}
+                      />
+                      {returnSale.customerId && (
+                        <FormControlLabel
+                          value="credit"
+                          control={<Radio size="small" color="primary" />}
+                          label={<Typography variant="body2">👤 Adjust Customer Khata / Balance</Typography>}
+                        />
+                      )}
+                    </RadioGroup>
+                  </FormControl>
+
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Return Reason / Remarks"
+                    placeholder="e.g. Customer returned 1 item (defective/change of mind)"
+                    value={returnNotes}
+                    onChange={(e) => setReturnNotes(e.target.value)}
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ bgcolor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 1.5 }}>
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
+                        Return Calculation Summary
+                      </Typography>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                        <Typography variant="body2" color="text.secondary">Total Items Returning:</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{calculateTotalReturnItemsCount()} pcs</Typography>
+                      </Box>
+                      <Divider sx={{ my: 1 }} />
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a' }}>
+                          Total Refund Amount:
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 800, color: '#d97706' }}>
+                          {storeSettings.currency} {calculateTotalRefund().toFixed(2)}
+                        </Typography>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2, pt: 1, display: 'flex', justifyContent: 'space-between' }}>
+              <Button
+                onClick={() => { setOpenReturnDialog(false); setReturnSale(null); }}
+                color="inherit"
+                variant="outlined"
+                disabled={returning}
+                sx={{ borderRadius: 1.5 }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleProcessReturn}
+                variant="contained"
+                color="warning"
+                disabled={returning || calculateTotalReturnItemsCount() === 0}
+                startIcon={<ReturnIcon />}
+                sx={{ borderRadius: 1.5, fontWeight: 700, px: 3 }}
+              >
+                {returning ? 'Processing Return...' : `Confirm Return & Refund (${storeSettings.currency} ${calculateTotalRefund().toFixed(2)})`}
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
       {/* Global Success Notifications */}

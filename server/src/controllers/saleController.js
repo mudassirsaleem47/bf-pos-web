@@ -252,4 +252,193 @@ const deleteSales = async (req, res) => {
   }
 };
 
-module.exports = { getSales, createSale, deleteSales };
+// @desc  Process partial or full return for a sale
+// @route POST /api/sales/:id/return
+const returnSaleItems = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { returnedItems, refundMethod, notes } = req.body;
+
+    if (!returnedItems || !Array.isArray(returnedItems) || returnedItems.length === 0) {
+      return res.status(400).json({ message: 'Returned items are required' });
+    }
+
+    const sale = await prisma.saleTransaction.findFirst({
+      where: { id, userId: req.user.id },
+      include: { items: true, customer: true }
+    });
+
+    if (!sale) {
+      return res.status(404).json({ message: 'Sale transaction not found' });
+    }
+
+    // Validate returned items against existing items
+    let totalRefundAmount = 0;
+    const itemsMap = new Map();
+    for (const item of sale.items) {
+      itemsMap.set(item.id, item);
+    }
+
+    for (const ret of returnedItems) {
+      const orig = itemsMap.get(ret.saleItemId);
+      if (!orig) {
+        return res.status(400).json({ message: `Item not found in sale: ${ret.saleItemId}` });
+      }
+      const returnQty = parseFloat(ret.returnQuantity) || 0;
+      if (returnQty <= 0) {
+        continue;
+      }
+      if (returnQty > orig.quantity) {
+        return res.status(400).json({ message: `Cannot return ${returnQty} of "${orig.name}". Only ${orig.quantity} purchased.` });
+      }
+      const unitPrice = orig.quantity > 0 ? (orig.total / orig.quantity) : orig.price;
+      totalRefundAmount += unitPrice * returnQty;
+    }
+
+    if (totalRefundAmount <= 0) {
+      return res.status(400).json({ message: 'No valid items or quantities selected for return' });
+    }
+
+    let updatedSale = null;
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Process each returned item: restore stock and reduce saleItem qty
+      for (const ret of returnedItems) {
+        const orig = itemsMap.get(ret.saleItemId);
+        const returnQty = parseFloat(ret.returnQuantity) || 0;
+        if (returnQty <= 0) continue;
+
+        // Restore product stock
+        if (orig.productId) {
+          await tx.product.update({
+            where: { id: orig.productId },
+            data: {
+              stock: {
+                increment: returnQty
+              }
+            }
+          });
+        }
+
+        const unitPrice = orig.quantity > 0 ? (orig.total / orig.quantity) : orig.price;
+        const itemRefund = unitPrice * returnQty;
+        const remainingQty = orig.quantity - returnQty;
+        const remainingTotal = Math.max(0, orig.total - itemRefund);
+
+        if (remainingQty <= 0.0001) {
+          // Entire item line returned
+          await tx.saleItem.delete({
+            where: { id: orig.id }
+          });
+        } else {
+          // Partial item line returned
+          await tx.saleItem.update({
+            where: { id: orig.id },
+            data: {
+              quantity: remainingQty,
+              total: remainingTotal
+            }
+          });
+        }
+      }
+
+      // Check remaining items count in sale
+      const remainingItems = await tx.saleItem.findMany({
+        where: { saleId: sale.id }
+      });
+
+      const returnSummary = returnedItems
+        .filter(r => (parseFloat(r.returnQuantity) || 0) > 0)
+        .map(r => {
+          const orig = itemsMap.get(r.saleItemId);
+          return `${r.returnQuantity}x ${orig ? orig.name : 'item'}`;
+        }).join(', ');
+
+      const returnNote = `[Return on ${new Date().toLocaleDateString()}]: Returned ${returnSummary} (Refund: ${totalRefundAmount.toFixed(2)} via ${refundMethod || 'Cash'})${notes ? ` - ${notes}` : ''}`;
+
+      if (remainingItems.length === 0) {
+        // All items returned -> Sale is completely returned
+        if (sale.customerId) {
+          const dueAmount = Math.max(0, (sale.totalAmount || 0) - (sale.paidAmount || 0));
+          if (dueAmount > 0) {
+            const cust = await tx.customer.findFirst({ where: { id: sale.customerId } });
+            if (cust) {
+              const newBal = Math.max(0, (cust.balance || 0) - dueAmount);
+              await tx.customer.update({
+                where: { id: sale.customerId },
+                data: { balance: newBal }
+              });
+            }
+          }
+        }
+
+        // Delete sale transaction
+        await tx.saleTransaction.delete({
+          where: { id: sale.id }
+        });
+
+        updatedSale = { isFullyReturned: true, receiptNo: sale.receiptNo, totalRefundAmount };
+      } else {
+        // Partial sale remaining
+        const newTotalAmount = Math.max(0, (sale.totalAmount || 0) - totalRefundAmount);
+        
+        let newPaidAmount = sale.paidAmount || 0;
+        let customerBalanceAdjustment = 0;
+
+        const originalDue = Math.max(0, (sale.totalAmount || 0) - (sale.paidAmount || 0));
+
+        if (originalDue > 0 && sale.customerId) {
+          // Was a credit/partial unpaid sale -> reduce customer debt
+          const debtReduction = Math.min(originalDue, totalRefundAmount);
+          customerBalanceAdjustment = debtReduction;
+          const remainingRefund = totalRefundAmount - debtReduction;
+          if (remainingRefund > 0 && refundMethod === 'cash') {
+            newPaidAmount = Math.max(0, newPaidAmount - remainingRefund);
+          }
+        } else {
+          // Was fully paid
+          if (refundMethod === 'cash') {
+            newPaidAmount = Math.max(0, (sale.paidAmount || 0) - totalRefundAmount);
+          } else if (refundMethod === 'credit' && sale.customerId) {
+            // Customer credit balance adjustment
+            customerBalanceAdjustment = -totalRefundAmount;
+          }
+        }
+
+        if (sale.customerId && customerBalanceAdjustment !== 0) {
+          const cust = await tx.customer.findFirst({ where: { id: sale.customerId } });
+          if (cust) {
+            const newBal = Math.max(0, (cust.balance || 0) - customerBalanceAdjustment);
+            await tx.customer.update({
+              where: { id: sale.customerId },
+              data: { balance: newBal }
+            });
+          }
+        }
+
+        const combinedNotes = sale.notes ? `${sale.notes}\n${returnNote}` : returnNote;
+
+        updatedSale = await tx.saleTransaction.update({
+          where: { id: sale.id },
+          data: {
+            totalAmount: newTotalAmount,
+            paidAmount: Math.min(newPaidAmount, newTotalAmount),
+            notes: combinedNotes
+          },
+          include: { items: true, customer: true }
+        });
+      }
+    }, { maxWait: 10000, timeout: 20000 });
+
+    return res.status(200).json({
+      message: 'Return processed successfully',
+      refundAmount: totalRefundAmount,
+      sale: updatedSale
+    });
+  } catch (error) {
+    console.error('Process return error:', error);
+    return res.status(500).json({ message: error.message || 'Server error processing return' });
+  }
+};
+
+module.exports = { getSales, createSale, deleteSales, returnSaleItems };
