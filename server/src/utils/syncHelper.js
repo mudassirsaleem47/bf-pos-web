@@ -6,7 +6,7 @@ const setSyncing = (val) => {
 };
 
 const logSync = async (modelName, recordId, action, userId = null) => {
-  if (isSyncing) return;
+  if (isSyncing || modelName === 'SyncLog' || !recordId) return;
   const prisma = require('../../lib/prisma');
   try {
     if (action === 'delete') {

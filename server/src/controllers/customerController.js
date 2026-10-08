@@ -114,7 +114,7 @@ const getCustomers = async (req, res) => {
         needsRefetch = true;
         await prisma.$transaction(async (tx) => {
           await allocatePaymentToSales(tx, customer.id, req.user.id, unallocated);
-        });
+        }, { maxWait: 10000, timeout: 20000 });
       }
     }
 
@@ -218,7 +218,7 @@ const receivePayment = async (req, res) => {
           }
         });
       }
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     // Save payment record in CustomerPayment table
     try {
@@ -329,7 +329,7 @@ const updateCustomer = async (req, res) => {
             balance: newBalance
           }
         });
-      });
+      }, { maxWait: 10000, timeout: 20000 });
     } else {
       await prisma.customer.update({
         where: { id },

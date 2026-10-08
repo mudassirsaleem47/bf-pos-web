@@ -18,7 +18,7 @@ const prisma = basePrisma.$extends({
       async $allOperations({ model, operation, args, query }) {
         const result = await query(args);
 
-        if (getSyncing()) return result;
+        if (getSyncing() || model === 'SyncLog') return result;
 
         const store = asyncLocalStorage.getStore();
         const userId = store ? store.userId : null;

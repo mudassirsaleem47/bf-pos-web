@@ -164,7 +164,7 @@ const createSale = async (req, res) => {
       }
 
       return newSale;
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     return res.status(201).json(sale);
   } catch (error) {
@@ -241,7 +241,7 @@ const deleteSales = async (req, res) => {
           where: { id: sale.id }
         });
       }
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     return res.status(200).json({ 
       message: `${salesToDelete.length} sale transaction(s) deleted and product stock restored successfully.` 
