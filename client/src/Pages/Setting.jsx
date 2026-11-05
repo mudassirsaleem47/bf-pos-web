@@ -22,9 +22,17 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  Paper
 } from '@mui/material';
 import {
+  Build as BuildIcon,
   Save as SaveIcon,
   CloudUpload as UploadIcon,
   Store as StoreIcon,
@@ -50,6 +58,12 @@ const Setting = () => {
   const [openClearDialog, setOpenClearDialog] = useState(false);
   const [confirmClearText, setConfirmClearText] = useState('');
   const [clearLoading, setClearLoading] = useState(false);
+
+  // One-time customer ledger repair
+  const [repairPreview, setRepairPreview] = useState(null);
+  const [repairLoading, setRepairLoading] = useState(false);
+  const [openRepairDialog, setOpenRepairDialog] = useState(false);
+  const [repairError, setRepairError] = useState('');
 
   // Printer Configuration States
   const [printMethod, setPrintMethod] = useState(() => localStorage.getItem('printer_method') || 'browser');
@@ -306,6 +320,55 @@ const Setting = () => {
       setError(err.message || 'Failed to clear store data.');
     } finally {
       setClearLoading(false);
+    }
+  };
+
+  const callLedgerRepair = async (method) => {
+    const token = getToken();
+    if (!token) return null;
+    const response = await fetch(`${API_URL}/api/settings/ledger-repair`, {
+      method,
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      navigate('/login');
+      return null;
+    }
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Ledger repair request failed');
+    return data;
+  };
+
+  const handleRepairPreview = async () => {
+    setRepairLoading(true);
+    setRepairError('');
+    try {
+      const data = await callLedgerRepair('GET');
+      if (!data) return;
+      setRepairPreview(data);
+      setOpenRepairDialog(true);
+    } catch (err) {
+      setRepairError(err.message || 'Failed to load ledger repair preview.');
+    } finally {
+      setRepairLoading(false);
+    }
+  };
+
+  const handleRepairApply = async () => {
+    setRepairLoading(true);
+    setRepairError('');
+    try {
+      const data = await callLedgerRepair('POST');
+      if (!data) return;
+      setSuccessMsg(data.message || 'Ledger repaired successfully.');
+      setOpenRepairDialog(false);
+      setRepairPreview(null);
+    } catch (err) {
+      setRepairError(err.message || 'Failed to repair ledger.');
+    } finally {
+      setRepairLoading(false);
     }
   };
 
@@ -647,6 +710,112 @@ const Setting = () => {
           </Grid>
         </Grid>
       </form>
+
+      {/* One-time customer ledger repair */}
+      <Card sx={{ border: '1px solid #e2e8f0', borderRadius: 1.5, mt: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 1 }}>
+              <BuildIcon fontSize="small" /> Fix Old Customer Ledger Data
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#475569' }}>
+              Earlier versions split customer payments across sale invoices, so old invoices may show the wrong "Paid at Counter" amount.
+              This one-time repair corrects those invoices. Customer payments and customer balances are not changed.
+              Click <strong>Preview</strong> first to see exactly what will change. Running it again later is safe and changes nothing.
+            </Typography>
+            {repairError && !openRepairDialog && <Alert severity="error">{repairError}</Alert>}
+            <Box>
+              <Button
+                variant="outlined"
+                onClick={handleRepairPreview}
+                disabled={repairLoading}
+                sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
+              >
+                {repairLoading && !openRepairDialog ? 'Checking...' : 'Preview'}
+              </Button>
+            </Box>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Ledger Repair Preview Dialog */}
+      <Dialog
+        open={openRepairDialog}
+        onClose={() => !repairLoading && setOpenRepairDialog(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+          Ledger Repair Preview
+        </DialogTitle>
+        <Divider sx={{ mx: 3 }} />
+        <DialogContent sx={{ py: 3 }}>
+          <Stack spacing={2}>
+            {repairError && <Alert severity="error">{repairError}</Alert>}
+            {repairPreview && repairPreview.salesCount === 0 ? (
+              <Alert severity="success">Nothing to repair. Your ledger data is already up to date.</Alert>
+            ) : repairPreview && (
+              <>
+                <Typography variant="body2" sx={{ color: '#475569' }}>
+                  {repairPreview.salesCount} invoice(s) for {repairPreview.customers.length} customer(s) will have their "Paid at Counter" amount corrected.
+                  Customer balances will stay the same.
+                </Typography>
+                {repairPreview.customers.map((c) => (
+                  <Box key={c.customerId}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a', mb: 0.5 }}>
+                      {c.customerName}
+                    </Typography>
+                    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5 }}>
+                      <Table size="small">
+                        <TableHead sx={{ bgcolor: '#f1f5f9' }}>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 700 }}>Receipt #</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>Bill Total</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>Paid at Counter (now)</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>Paid at Counter (after)</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {c.changes.map((ch) => (
+                            <TableRow key={ch.saleId}>
+                              <TableCell>{ch.receiptNo}</TableCell>
+                              <TableCell align="right">{formData.currency} {Number(ch.totalAmount || 0).toFixed(2)}</TableCell>
+                              <TableCell align="right" sx={{ color: '#64748b' }}>{formData.currency} {ch.oldPaid.toFixed(2)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 700 }}>{formData.currency} {ch.newPaid.toFixed(2)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                ))}
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setOpenRepairDialog(false)}
+            color="inherit"
+            variant="outlined"
+            disabled={repairLoading}
+            sx={{ borderRadius: 1.5, textTransform: 'none' }}
+          >
+            Close
+          </Button>
+          {repairPreview && (
+            <Button
+              onClick={handleRepairApply}
+              variant="contained"
+              disabled={repairLoading}
+              sx={{ borderRadius: 1.5, textTransform: 'none', boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}
+            >
+              {repairLoading ? 'Applying...' : (repairPreview.salesCount > 0 ? 'Apply Repair' : 'Mark as Done')}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       {/* Danger Zone */}
       <Card sx={{ border: '1px solid #fee2e2', bgcolor: '#fff5f5', borderRadius: 1.5, mt: 3 }}>

@@ -31,6 +31,11 @@ const ensurePaymentTableExists = async () => {
         CONSTRAINT "CustomerPayment_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE
       );
     `);
+    // ledgerV2 = true for entries saved by the simple ledger (never split across invoices).
+    // Old rows stay false until the one-time ledger repair has been applied.
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "CustomerPayment" ADD COLUMN IF NOT EXISTS "ledgerV2" BOOLEAN NOT NULL DEFAULT false;
+    `);
     tableInitialized = true;
   } catch (err) {
     console.error('CustomerPayment table initialization check:', err.message);
@@ -63,8 +68,8 @@ const getCustomerPayments = async (customerIds, userId) => {
 // Helper to write one khata entry (db can be prisma or a transaction client)
 const insertPaymentRecord = async (db, { userId, customerId, amount, paymentMethod, notes, date }) => {
   await db.$executeRawUnsafe(`
-    INSERT INTO "CustomerPayment" ("id", "userId", "customerId", "amount", "paymentMethod", "receiptId", "receiptNo", "notes", "createdAt")
-    VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6, $7)
+    INSERT INTO "CustomerPayment" ("id", "userId", "customerId", "amount", "paymentMethod", "receiptId", "receiptNo", "notes", "createdAt", "ledgerV2")
+    VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6, $7, true)
   `, crypto.randomUUID(), userId, customerId, amount, paymentMethod || 'Cash', notes || null, date || new Date());
 };
 
@@ -290,6 +295,7 @@ const deleteCustomers = async (req, res) => {
 };
 
 module.exports = {
+  ensurePaymentTableExists,
   getCustomers,
   receivePayment,
   createCustomer,
