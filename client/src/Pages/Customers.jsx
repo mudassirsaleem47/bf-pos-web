@@ -57,91 +57,92 @@ const API_URL = (window.location.hostname === 'localhost' || window.location.hos
 const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
   const [activeTab, setActiveTab] = useState(0);
 
+  // Simple khata:
+  //   Sale bill            -> Debit = bill total, Credit = amount paid at the counter
+  //   Payment (wasooli)    -> Credit = amount received (exactly as entered, never split)
+  //   Opening / adjustment -> stored as negative payment amounts (Debit)
+  // Balance = total debit - total credit. It always ends at the saved customer balance.
   const sales = customer.sales || [];
-  const explicitPayments = customer.payments || [];
-
-  const totalBilled = sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
-  const totalPaid = sales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+  const khataEntries = customer.payments || [];
   const currentBalance = customer.balance || 0;
 
-  // Build comprehensive list of all payments (both explicit CustomerPayment records + checkout / settled payments on sales)
-  const allPaymentRecords = [...explicitPayments];
-  const explicitLinkedSaleIds = new Set(
-    explicitPayments.filter(p => p.receiptId).map(p => p.receiptId)
-  );
+  // Amount paid at the counter for a bill (never more than the bill, ignores change returned)
+  const counterPaid = (s) => {
+    const total = s.totalAmount || 0;
+    const paid = s.paidAmount || 0;
+    return total >= 0 ? Math.min(Math.max(paid, 0), total) : Math.max(Math.min(paid, 0), total);
+  };
 
-  // If explicit payments total is less than totalPaid across sales, include the checkout/settled payments
-  const explicitTotal = explicitPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  if (explicitTotal < totalPaid - 0.01) {
-    for (const sale of sales) {
-      if ((sale.paidAmount || 0) > 0.001 && !explicitLinkedSaleIds.has(sale.id)) {
-        allPaymentRecords.push({
-          id: `checkout-pay-${sale.id}`,
-          createdAt: sale.createdAt,
-          amount: sale.paidAmount,
-          paymentMethod: 'Cash (Checkout / Settlement)',
-          receiptId: sale.id,
-          receiptNo: sale.receiptNo,
-          notes: `Paid at sale checkout / settlement for ${sale.receiptNo}`
-        });
-      }
-    }
-  }
+  const paymentRecords = [...khataEntries].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const receivedPayments = khataEntries.filter(p => (p.amount || 0) > 0);
 
-  // Sort payments newest first for the Payments tab
-  allPaymentRecords.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const totalBilled = sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
+  const totalPaidAtCounter = sales.reduce((sum, s) => sum + counterPaid(s), 0);
+  const totalReceived = receivedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalPaid = totalPaidAtCounter + totalReceived;
 
-  // Build unified chronological ledger entries
   const ledgerEntries = [];
 
-  // 1. Add all sales as Debit entries
   for (const sale of sales) {
     const itemsStr = sale.items && sale.items.length > 0
       ? sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ')
       : 'Sale Invoice';
+    const paidNow = counterPaid(sale);
 
     ledgerEntries.push({
       id: `sale-${sale.id}`,
       rawDate: new Date(sale.createdAt),
-      dateStr: new Date(sale.createdAt).toLocaleString(),
       type: 'SALE',
-      typeLabel: 'Sale Invoice',
       ref: sale.receiptNo,
-      details: itemsStr,
-      debit: sale.totalAmount,
-      credit: 0,
-      saleObj: sale
+      details: paidNow > 0.001 ? `${itemsStr} — Paid at counter: ${currency} ${paidNow.toFixed(2)}` : itemsStr,
+      debit: sale.totalAmount || 0,
+      credit: paidNow
     });
   }
 
-  // 2. Add all payment records as Credit entries
-  for (const p of allPaymentRecords) {
+  for (const p of khataEntries) {
+    const amt = p.amount || 0;
+    const isReceived = amt > 0;
     ledgerEntries.push({
       id: `pay-${p.id}`,
       rawDate: new Date(p.createdAt),
-      dateStr: new Date(p.createdAt).toLocaleString(),
-      type: 'PAYMENT',
-      typeLabel: 'Payment Received',
-      ref: p.receiptNo ? `Ref: ${p.receiptNo}` : 'Account Payment',
-      details: p.notes ? `${p.paymentMethod || 'Cash'}: ${p.notes}` : (p.paymentMethod || 'Cash Payment'),
-      debit: 0,
-      credit: p.amount,
-      paymentObj: p
+      type: isReceived ? 'PAYMENT' : 'ADJUST',
+      ref: p.paymentMethod || 'Cash',
+      details: p.notes || (isReceived ? 'Payment received' : 'Balance added'),
+      debit: isReceived ? 0 : -amt,
+      credit: isReceived ? amt : 0
     });
   }
 
-  // Sort chronological (oldest to newest for accurate running balance calculation)
   ledgerEntries.sort((a, b) => a.rawDate - b.rawDate);
 
-  // Compute running balance
+  // Anything not explained by bills + entries (old data / opening balance from before this ledger)
+  const ledgerSum = ledgerEntries.reduce((sum, e) => sum + e.debit - e.credit, 0);
+  const unexplained = currentBalance - ledgerSum;
+  if (Math.abs(unexplained) >= 0.01) {
+    ledgerEntries.unshift({
+      id: 'opening-adjustment',
+      rawDate: ledgerEntries.length > 0 ? ledgerEntries[0].rawDate : new Date(customer.createdAt),
+      type: 'ADJUST',
+      ref: 'Opening / Adjustment',
+      details: 'Opening balance or earlier adjustment',
+      debit: unexplained > 0 ? unexplained : 0,
+      credit: unexplained < 0 ? -unexplained : 0
+    });
+  }
+
   let running = 0;
   const ledgerWithBalance = ledgerEntries.map(entry => {
-    running = running + (entry.debit || 0) - (entry.credit || 0);
+    running = running + entry.debit - entry.credit;
     return {
       ...entry,
-      balanceAfter: Math.max(0, running)
+      dateStr: entry.rawDate.toLocaleString(),
+      balanceAfter: running
     };
   });
+
+  // Billed - Paid + Adjustment = Balance (adjustment = opening balance, manual edits, old data)
+  const adjustmentTotal = currentBalance - (totalBilled - totalPaid);
 
   // For display, reverse to show newest first
   const displayTimeline = [...ledgerWithBalance].reverse();
@@ -153,7 +154,7 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
         <Stack direction="row" spacing={3} alignItems="center" flexWrap="wrap">
           <Box>
             <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block' }}>
-              Total Billed (Udhar / Sales)
+              Total Billed
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0f172a' }}>
               {currency} {totalBilled.toFixed(2)}
@@ -164,18 +165,32 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
 
           <Box>
             <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block' }}>
-              Total Paid (Wasooli / Credit)
+              Total Paid
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#16a34a' }}>
               {currency} {totalPaid.toFixed(2)}
             </Typography>
           </Box>
 
+          {Math.abs(adjustmentTotal) >= 0.01 && (
+            <>
+              <Divider orientation="vertical" flexItem sx={{ height: 32 }} />
+              <Box>
+                <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block' }}>
+                  Opening / Adjustment
+                </Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#b45309' }}>
+                  {adjustmentTotal > 0 ? '+' : '-'} {currency} {Math.abs(adjustmentTotal).toFixed(2)}
+                </Typography>
+              </Box>
+            </>
+          )}
+
           <Divider orientation="vertical" flexItem sx={{ height: 32 }} />
 
           <Box>
             <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block' }}>
-              Current Khata Balance (Baqaya)
+              Current Balance
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, color: currentBalance > 0 ? '#b91c1c' : '#16a34a' }}>
               {currency} {currentBalance.toFixed(2)}
@@ -221,7 +236,7 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
           <Tab
             icon={<PaymentIcon sx={{ fontSize: 18 }} />}
             iconPosition="start"
-            label={`Payments Received (${allPaymentRecords.length})`}
+            label={`Payments Received (${paymentRecords.length})`}
             sx={{ minHeight: 38, py: 0.5, fontSize: '0.85rem', fontWeight: 600, textTransform: 'none' }}
           />
         </Tabs>
@@ -239,7 +254,7 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
                 <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Particulars / Details</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700, color: '#b91c1c' }}>Debit (+Billed)</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700, color: '#15803d' }}>Credit (-Paid)</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, color: '#0f172a' }}>Khata Balance</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#0f172a' }}>Balance</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -252,6 +267,13 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
               ) : (
                 displayTimeline.map((item) => {
                   const isSale = item.type === 'SALE';
+                  const isAdjust = item.type === 'ADJUST';
+                  const chipLabel = isSale ? 'Sale Bill' : (isAdjust ? 'Adjustment' : 'Payment Received');
+                  const chipColors = isSale
+                    ? { bg: '#fef2f2', fg: '#b91c1c', border: '#fecaca' }
+                    : isAdjust
+                      ? { bg: '#fffbeb', fg: '#b45309', border: '#fde68a' }
+                      : { bg: '#f0fdf4', fg: '#15803d', border: '#bbf7d0' };
                   return (
                     <TableRow key={item.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                       <TableCell sx={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>
@@ -260,14 +282,14 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
                       <TableCell>
                         <Chip
                           size="small"
-                          icon={isSale ? <DebitIcon sx={{ fontSize: 14 }} /> : <CreditIcon sx={{ fontSize: 14 }} />}
-                          label={isSale ? 'Sale Bill' : 'Payment Received'}
+                          icon={item.debit > 0 ? <DebitIcon sx={{ fontSize: 14 }} /> : <CreditIcon sx={{ fontSize: 14 }} />}
+                          label={chipLabel}
                           sx={{
                             fontWeight: 700,
                             fontSize: '0.72rem',
-                            bgcolor: isSale ? '#fef2f2' : '#f0fdf4',
-                            color: isSale ? '#b91c1c' : '#15803d',
-                            border: `1px solid ${isSale ? '#fecaca' : '#bbf7d0'}`
+                            bgcolor: chipColors.bg,
+                            color: chipColors.fg,
+                            border: `1px solid ${chipColors.border}`
                           }}
                         />
                       </TableCell>
@@ -277,13 +299,13 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
                       <TableCell sx={{ fontSize: '0.82rem', color: '#475569', maxWidth: 350 }}>
                         {item.details}
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: isSale ? '#b91c1c' : '#94a3b8' }}>
-                        {isSale ? `${currency} ${item.debit.toFixed(2)}` : '-'}
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: item.debit !== 0 ? '#b91c1c' : '#94a3b8' }}>
+                        {item.debit !== 0 ? `${currency} ${item.debit.toFixed(2)}` : '-'}
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: !isSale ? '#15803d' : '#94a3b8' }}>
-                        {!isSale ? `${currency} ${item.credit.toFixed(2)}` : '-'}
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: item.credit !== 0 ? '#15803d' : '#94a3b8' }}>
+                        {item.credit !== 0 ? `${currency} ${item.credit.toFixed(2)}` : '-'}
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a' }}>
+                      <TableCell align="right" sx={{ fontWeight: 800, fontSize: '0.85rem', color: item.balanceAfter < -0.001 ? '#15803d' : '#0f172a' }}>
                         {currency} {item.balanceAfter.toFixed(2)}
                       </TableCell>
                     </TableRow>
@@ -305,22 +327,21 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
                 <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Date & Time</TableCell>
                 <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Items Purchased</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700, color: '#334155' }}>Total Bill</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, color: '#15803d' }}>Paid Amount</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, color: '#b91c1c' }}>Due Balance</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 700, color: '#334155' }}>Action</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#15803d' }}>Paid at Counter</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#b91c1c' }}>Added to Balance (Credit)</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {sales.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#64748b', fontStyle: 'italic' }}>
+                  <TableCell colSpan={6} align="center" sx={{ py: 3, color: '#64748b', fontStyle: 'italic' }}>
                     No sales invoices found.
                   </TableCell>
                 </TableRow>
               ) : (
                 sales.map((sale) => {
-                  const due = Math.max(0, sale.totalAmount - sale.paidAmount);
-                  const isFullyPaid = due <= 0.001;
+                  const paidNow = counterPaid(sale);
+                  const udhaar = (sale.totalAmount || 0) - paidNow;
                   const itemsStr = sale.items && sale.items.length > 0
                     ? sale.items.map(item => `${item.name} (x${item.quantity})`).join(', ')
                     : 'No items recorded';
@@ -339,27 +360,11 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
                       <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
                         {currency} {sale.totalAmount.toFixed(2)}
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: sale.paidAmount > 0 ? '#15803d' : '#64748b' }}>
-                        {currency} {sale.paidAmount.toFixed(2)}
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: paidNow > 0 ? '#15803d' : '#64748b' }}>
+                        {currency} {paidNow.toFixed(2)}
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: due > 0 ? '#b91c1c' : '#15803d' }}>
-                        {due > 0 ? `${currency} ${due.toFixed(2)}` : 'Paid (0.00)'}
-                      </TableCell>
-                      <TableCell align="center">
-                        {due > 0 ? (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="success"
-                            startIcon={<MoneyIcon sx={{ fontSize: 14 }} />}
-                            onClick={() => onOpenPayment(customer, sale)}
-                            sx={{ fontSize: '0.72rem', py: 0.3, px: 1, textTransform: 'none' }}
-                          >
-                            Pay Due
-                          </Button>
-                        ) : (
-                          <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize: 14 }} />} label="Settled" color="success" variant="outlined" />
-                        )}
+                      <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', color: udhaar > 0.001 ? '#b91c1c' : '#64748b' }}>
+                        {currency} {udhaar.toFixed(2)}
                       </TableCell>
                     </TableRow>
                   );
@@ -378,42 +383,47 @@ const CustomerLedgerView = ({ customer, currency, onOpenPayment }) => {
               <TableRow>
                 <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Date & Time Received</TableCell>
                 <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Payment Method</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Applied To / Ref</TableCell>
                 <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Notes / Remarks</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700, color: '#15803d' }}>Amount Received</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {allPaymentRecords.length === 0 ? (
+              {paymentRecords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 3, color: '#64748b', fontStyle: 'italic' }}>
+                  <TableCell colSpan={4} align="center" sx={{ py: 3, color: '#64748b', fontStyle: 'italic' }}>
                     No payment records found for this customer.
                   </TableCell>
                 </TableRow>
               ) : (
-                allPaymentRecords.map((p) => (
-                  <TableRow key={p.id} hover>
-                    <TableCell sx={{ fontSize: '0.8rem', color: '#1e293b', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {new Date(p.createdAt).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={p.paymentMethod || 'Cash'}
-                        sx={{ fontSize: '0.72rem', fontWeight: 700, bgcolor: '#f0fdf4', color: '#15803d' }}
-                      />
-                    </TableCell>
-                    <TableCell sx={{ fontSize: '0.82rem', color: '#475569' }}>
-                      {p.receiptNo ? `Receipt ${p.receiptNo}` : 'All Dues (FIFO Allocated)'}
-                    </TableCell>
-                    <TableCell sx={{ fontSize: '0.82rem', color: '#64748b' }}>
-                      {p.notes || '-'}
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#15803d' }}>
-                      {currency} {p.amount.toFixed(2)}
-                    </TableCell>
-                  </TableRow>
-                ))
+                paymentRecords.map((p) => {
+                  const amt = p.amount || 0;
+                  const isReceived = amt > 0;
+                  return (
+                    <TableRow key={p.id} hover>
+                      <TableCell sx={{ fontSize: '0.8rem', color: '#1e293b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        {new Date(p.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={p.paymentMethod || 'Cash'}
+                          sx={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            bgcolor: isReceived ? '#f0fdf4' : '#fffbeb',
+                            color: isReceived ? '#15803d' : '#b45309'
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.82rem', color: '#64748b' }}>
+                        {p.notes || (p.receiptNo ? `Receipt ${p.receiptNo}` : '-')}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 800, fontSize: '0.85rem', color: isReceived ? '#15803d' : '#b45309' }}>
+                        {isReceived ? '' : '+ '}{currency} {Math.abs(amt).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -452,47 +462,25 @@ const Customers = () => {
   // Payment Dialog States
   const [openPaymentDialog, setOpenPaymentDialog] = useState(false);
   const [paymentCustomer, setPaymentCustomer] = useState(null);
-  const [selectedReceiptId, setSelectedReceiptId] = useState('ALL');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
-  const handleOpenPayment = (customer, specificSale = null) => {
+  const handleOpenPayment = (customer) => {
     setPaymentCustomer(customer);
     setPaymentError('');
     setPaymentMethod('Cash');
     setPaymentNotes('');
-    
+
     // Set current local datetime formatted for datetime-local input
     const now = new Date();
     const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
     setPaymentDate(localIso);
 
-    if (specificSale) {
-      setSelectedReceiptId(specificSale.id);
-      const due = Math.max(0, specificSale.totalAmount - specificSale.paidAmount);
-      setPaymentAmount(String(due > 0 ? due : 0));
-    } else {
-      setSelectedReceiptId('ALL');
-      setPaymentAmount(String(customer.balance || 0));
-    }
+    setPaymentAmount(String(customer.balance || 0));
     setOpenPaymentDialog(true);
-  };
-
-  const handleReceiptSelectionChange = (receiptId) => {
-    setSelectedReceiptId(receiptId);
-    if (!paymentCustomer) return;
-    if (receiptId === 'ALL') {
-      setPaymentAmount(String(paymentCustomer.balance || 0));
-    } else {
-      const target = (paymentCustomer.sales || []).find(s => s.id === receiptId);
-      if (target) {
-        const due = Math.max(0, target.totalAmount - target.paidAmount);
-        setPaymentAmount(String(due));
-      }
-    }
   };
 
   const handlePaymentSubmit = async (e) => {
@@ -510,17 +498,6 @@ const Customers = () => {
       return;
     }
 
-    if (selectedReceiptId !== 'ALL') {
-      const target = (paymentCustomer.sales || []).find(s => s.id === selectedReceiptId);
-      if (target) {
-        const due = Math.max(0, target.totalAmount - target.paidAmount);
-        if (amt > due + 0.01) {
-          setPaymentError(`Payment amount cannot exceed the receipt due of ${currency}${due.toFixed(2)}.`);
-          return;
-        }
-      }
-    }
-
     const token = getToken();
     if (!token) return;
 
@@ -534,7 +511,6 @@ const Customers = () => {
         },
         body: JSON.stringify({
           amount: amt,
-          receiptId: selectedReceiptId,
           paymentMethod,
           notes: paymentNotes.trim(),
           date: paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString()
@@ -919,7 +895,7 @@ const Customers = () => {
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
-                  Debtors (Khata Holders)
+                  Debtors (Credit Customers)
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: '#a855f7' }}>
                   {creditCustomersCount}
@@ -1103,30 +1079,6 @@ const Customers = () => {
                   </Typography>
                 </Box>
 
-                <FormControl fullWidth size="small">
-                  <InputLabel id="payment-target-label">Apply Payment To</InputLabel>
-                  <Select
-                    labelId="payment-target-label"
-                    value={selectedReceiptId}
-                    label="Apply Payment To"
-                    onChange={(e) => handleReceiptSelectionChange(e.target.value)}
-                  >
-                    <MenuItem value="ALL">
-                      <em>All Outstanding Balance (Auto-allocate FIFO from oldest)</em>
-                    </MenuItem>
-                    {(paymentCustomer.sales || [])
-                      .filter(s => (s.totalAmount - s.paidAmount) > 0.001)
-                      .map(s => {
-                        const due = s.totalAmount - s.paidAmount;
-                        return (
-                          <MenuItem key={s.id} value={s.id}>
-                            Receipt {s.receiptNo} — Due: {currency}{due.toFixed(2)} (Total: {currency}{s.totalAmount.toFixed(2)})
-                          </MenuItem>
-                        );
-                      })}
-                  </Select>
-                </FormControl>
-
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -1146,14 +1098,7 @@ const Customers = () => {
                       <Button
                         size="small"
                         variant="outlined"
-                        onClick={() => {
-                          if (selectedReceiptId === 'ALL') {
-                            setPaymentAmount(String(paymentCustomer.balance || 0));
-                          } else {
-                            const target = (paymentCustomer.sales || []).find(s => s.id === selectedReceiptId);
-                            if (target) setPaymentAmount(String(Math.max(0, target.totalAmount - target.paidAmount)));
-                          }
-                        }}
+                        onClick={() => setPaymentAmount(String(paymentCustomer.balance || 0))}
                         sx={{ fontSize: '0.72rem', py: 0.2 }}
                       >
                         Pay Full Due
@@ -1170,7 +1115,7 @@ const Customers = () => {
                         label="Payment Method"
                         onChange={(e) => setPaymentMethod(e.target.value)}
                       >
-                        <MenuItem value="Cash">Cash (Naqad)</MenuItem>
+                        <MenuItem value="Cash">Cash</MenuItem>
                         <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
                         <MenuItem value="EasyPaisa">EasyPaisa</MenuItem>
                         <MenuItem value="JazzCash">JazzCash</MenuItem>

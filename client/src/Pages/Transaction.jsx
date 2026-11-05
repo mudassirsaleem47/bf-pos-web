@@ -962,7 +962,7 @@ const Transaction = () => {
                         <FormControlLabel
                           value="credit"
                           control={<Radio size="small" color="primary" />}
-                          label={<Typography variant="body2">👤 Adjust Customer Khata / Balance</Typography>}
+                          label={<Typography variant="body2">👤 Adjust Customer Balance</Typography>}
                         />
                       )}
                     </RadioGroup>

@@ -1091,7 +1091,7 @@ const POS = () => {
       const remainingCredit = total - paid;
       setSuccessMsg(
         `Checkout successful! Receipt: ${sale.receiptNo}${
-          remainingCredit > 0 ? ` (Added Rs. ${remainingCredit.toFixed(2)} to ${selectedCustomer?.name || 'Customer'}'s khata)` : ''
+          remainingCredit > 0 ? ` (Added Rs. ${remainingCredit.toFixed(2)} to ${selectedCustomer?.name || 'Customer'}'s balance)` : ''
         }`
       );
       setCart([]);
